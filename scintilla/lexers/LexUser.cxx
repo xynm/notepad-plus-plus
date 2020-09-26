@@ -694,7 +694,7 @@ static inline void SubGroup(const char * s, vvstring & vec, bool group=false)
     delete [] temp;
 }
 
-static inline void GenerateVector(vvstring & vec, const char * s, char * prefix, size_t minLength)
+static inline void GenerateVector(vvstring & vec, const char * s, const char * prefix, size_t minLength)
 {
     size_t length = strlen(s);
     char * temp = new char[length];
@@ -757,7 +757,7 @@ static inline void StringToVector(char * original, vector<string> & tokenVector,
 
     string temp = "";
     char * pch = original;
-    while (*pch != NULL)
+    while (*pch != '\0')
     {
         if (*pch != ' ')
             temp += *pch;   //
@@ -1613,7 +1613,6 @@ static void ColouriseUserDoc(Sci_PositionU startPos, Sci_Position length, int in
     int nlCount = 0;
 
     int continueCommentBlock = 0;
-    bool startOfDelimiter = false;
     int decSeparator = SEPARATOR_DOT;
 
     vector<nestedInfo> lastNestedGroup;
@@ -2003,8 +2002,7 @@ static void ColouriseUserDoc(Sci_PositionU startPos, Sci_Position length, int in
                             dontMove = true;
                             if (sc.atLineEnd)
                                 checkEOL = EOL_SKIP_CHECK;
-                            if (lineCommentNesting & SCE_USER_MASK_NESTING_NUMBERS)
-                                startOfDelimiter = true;
+
                             break;
                         }
                     }
@@ -2034,8 +2032,7 @@ static void ColouriseUserDoc(Sci_PositionU startPos, Sci_Position length, int in
                         dontMove = true;
                         if (sc.atLineEnd)
                             checkEOL = EOL_SKIP_CHECK;
-                        if (commentNesting & SCE_USER_MASK_NESTING_NUMBERS)
-                            startOfDelimiter = true;
+
                         break;
                     }
                 }

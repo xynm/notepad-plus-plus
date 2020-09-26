@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -533,6 +533,16 @@ void FileManager::checkFilesystemChanges(bool bCheckOnlyCurrentBuffer)
 	}
 }
 
+size_t FileManager::getNbDirtyBuffers() const
+{
+	size_t nb_dirtyBufs = 0;
+	for (size_t i = 0; i < _nbBufs; ++i)
+	{
+		if (_buffers[i]->_isDirty)
+			++nb_dirtyBufs;
+	}
+	return nb_dirtyBufs;
+}
 
 int FileManager::getBufferIndexByID(BufferID id)
 {
@@ -839,6 +849,9 @@ bool FileManager::backupCurrentBuffer()
 				TCHAR tmpbuf[temBufLen];
 				time_t ltime = time(0);
 				struct tm* today = localtime(&ltime);
+				if (!today)
+					return false;
+
 				generic_strftime(tmpbuf, temBufLen, TEXT("%Y-%m-%d_%H%M%S"), today);
 
 				backupFilePath += TEXT("@");
@@ -1338,6 +1351,11 @@ bool FileManager::loadFileData(Document doc, const TCHAR * filename, char* data,
 		do
 		{
 			lenFile = fread(data+incompleteMultibyteChar, 1, blockSize-incompleteMultibyteChar, fp) + incompleteMultibyteChar;
+			if (ferror(fp) != 0)
+			{
+				success = false;
+				break;
+			}
 			if (lenFile == 0) break;
 
             if (isFirstTime)

@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -1555,8 +1555,10 @@ bool StringDlg::isAllowed(const generic_string & txt)
 {
 	for (auto ch : txt)
 	{
+	#ifndef __MINGW32__
 		if (std::find(_restrictedChars.cbegin(), _restrictedChars.cend(), ch) != _restrictedChars.cend())
 			return false;
+	#endif
 	}
 	return true;
 }

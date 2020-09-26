@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -77,24 +77,37 @@ bool AutoCompletion::showApiComplete()
 
 bool AutoCompletion::showApiAndWordComplete()
 {
+
+	// Get beginning of word and complete word
+
 	auto curPos = _pEditView->execute(SCI_GETCURRENTPOS);
 	auto startPos = _pEditView->execute(SCI_WORDSTARTPOSITION, curPos, true);
+	auto endPos = _pEditView->execute(SCI_WORDENDPOSITION, curPos, true);
 
 	if (curPos == startPos)
 		return false;
 
 	const size_t bufSize = 256;
 	TCHAR beginChars[bufSize];
+	TCHAR allChars[bufSize];
 
 	size_t len = (curPos > startPos)?(curPos - startPos):(startPos - curPos);
 	if (len >= bufSize)
 		return false;
 
-	// Get word array
-	vector<generic_string> wordArray;
-	_pEditView->getGenericText(beginChars, bufSize, startPos, curPos);
+	size_t lena = (endPos > startPos)?(endPos - startPos):(startPos - endPos);
+	if (lena >= bufSize)
+		return false;
 
-	getWordArray(wordArray, beginChars);
+	_pEditView->getGenericText(beginChars, bufSize, startPos, curPos);
+	_pEditView->getGenericText(allChars, bufSize, startPos, endPos);
+
+	// Get word array containing all words beginning with beginChars, excluding word equal to allChars
+
+	vector<generic_string> wordArray;
+	getWordArray(wordArray, beginChars, allChars);
+
+	// Add keywords to word array
 
 	bool canStop = false;
 	for (size_t i = 0, kwlen = _keyWordArray.size(); i < kwlen; ++i)
@@ -105,15 +118,17 @@ bool AutoCompletion::showApiAndWordComplete()
 				wordArray.push_back(_keyWordArray[i]);
 			canStop = true;
 		}
-		else if (canStop) {
+		else if (canStop)
+		{
 			// Early out since no more strings will match
 			break;
 		}
 	}
 
+	// Sort word array and convert it to a single string with space-separated words
+
 	sort(wordArray.begin(), wordArray.end());
 
-	// Get word list
 	generic_string words;
 
 	for (size_t i = 0, wordArrayLen = wordArray.size(); i < wordArrayLen; ++i)
@@ -123,6 +138,8 @@ bool AutoCompletion::showApiAndWordComplete()
 			words += TEXT(" ");
 	}
 
+	// Make Scintilla show the autocompletion menu
+
 	_pEditView->execute(SCI_AUTOCSETSEPARATOR, WPARAM(' '));
 	_pEditView->execute(SCI_AUTOCSETIGNORECASE, _ignoreCase);
 	_pEditView->showAutoComletion(curPos - startPos, words.c_str());
@@ -130,7 +147,7 @@ bool AutoCompletion::showApiAndWordComplete()
 }
 
 
-void AutoCompletion::getWordArray(vector<generic_string> & wordArray, TCHAR *beginChars)
+void AutoCompletion::getWordArray(vector<generic_string> & wordArray, TCHAR *beginChars, TCHAR *allChars)
 {
 	const size_t bufSize = 256;
 	const NppGUI & nppGUI = NppParameters::getInstance().getNppGUI();
@@ -159,9 +176,11 @@ void AutoCompletion::getWordArray(vector<generic_string> & wordArray, TCHAR *beg
 		{
 			TCHAR w[bufSize];
 			_pEditView->getGenericText(w, bufSize, wordStart, wordEnd);
-
-			if (!isInList(w, wordArray))
-				wordArray.push_back(w);
+			if (!allChars || (generic_strncmp (w, allChars, bufSize) != 0))
+			{
+				if (!isInList(w, wordArray))
+					wordArray.push_back(w);
+			}
 		}
 		posFind = _pEditView->searchInTarget(expr.c_str(), static_cast<int32_t>(expr.length()), wordEnd, docLength);
 	}
@@ -324,37 +343,50 @@ void AutoCompletion::showPathCompletion()
 
 bool AutoCompletion::showWordComplete(bool autoInsert)
 {
+	// Get beginning of word and complete word
+
 	int curPos = int(_pEditView->execute(SCI_GETCURRENTPOS));
 	int startPos = int(_pEditView->execute(SCI_WORDSTARTPOSITION, curPos, true));
+	int endPos = int(_pEditView->execute(SCI_WORDENDPOSITION, curPos, true));
 
 	if (curPos == startPos)
 		return false;
 
 	const size_t bufSize = 256;
 	TCHAR beginChars[bufSize];
+	TCHAR allChars[bufSize];
 
 	size_t len = (curPos > startPos)?(curPos - startPos):(startPos - curPos);
 	if (len >= bufSize)
 		return false;
 
-	// Get word array
-	vector<generic_string> wordArray;
-	_pEditView->getGenericText(beginChars, bufSize, startPos, curPos);
+	size_t lena = (endPos > startPos)?(endPos - startPos):(startPos - endPos);
+	if (lena >= bufSize)
+		return false;
 
-	getWordArray(wordArray, beginChars);
+	_pEditView->getGenericText(beginChars, bufSize, startPos, curPos);
+	_pEditView->getGenericText(allChars, bufSize, startPos, endPos);
+
+	// Get word array containing all words beginning with beginChars, excluding word equal to allChars
+
+	vector<generic_string> wordArray;
+	getWordArray(wordArray, beginChars, allChars);
 
 	if (wordArray.size() == 0) return false;
 
+	// Optionally, auto-insert word
+
 	if (wordArray.size() == 1 && autoInsert)
 	{
-		int replacedLength = _pEditView->replaceTargetRegExMode(wordArray[0].c_str(), startPos, curPos);
+		int replacedLength = _pEditView->replaceTarget(wordArray[0].c_str(), startPos, curPos);
 		_pEditView->execute(SCI_GOTOPOS, startPos + replacedLength);
 		return true;
 	}
 
+	// Sort word array and convert it to a single string with space-separated words
+
 	sort(wordArray.begin(), wordArray.end());
 
-	// Get word list
 	generic_string words(TEXT(""));
 
 	for (size_t i = 0, wordArrayLen = wordArray.size(); i < wordArrayLen; ++i)
@@ -363,6 +395,8 @@ bool AutoCompletion::showWordComplete(bool autoInsert)
 		if (i != wordArrayLen -1)
 			words += TEXT(" ");
 	}
+
+	// Make Scintilla show the autocompletion menu
 
 	_pEditView->execute(SCI_AUTOCSETSEPARATOR, WPARAM(' '));
 	_pEditView->execute(SCI_AUTOCSETIGNORECASE, _ignoreCase);
@@ -555,6 +589,7 @@ void AutoCompletion::insertMatchedChars(int character, const MatchedPairConf & m
 	bool isCharPrevBlank = (charPrev == ' ' || charPrev == '\t' || charPrev == '\n' || charPrev == '\r' || charPrev == '\0');
 	int docLen = _pEditView->getCurrentDocLen();
 	bool isCharNextBlank = (charNext == ' ' || charNext == '\t' || charNext == '\n' || charNext == '\r' || caretPos == docLen);
+	bool isCharNextCloseSymbol = (charNext == ')' || charNext == ']' || charNext == '}');
 	bool isInSandwich = (charPrev == '(' && charNext == ')') || (charPrev == '[' && charNext == ']') || (charPrev == '{' && charNext == '}');
 
 	// User defined matched pairs should be checked firstly
@@ -582,8 +617,7 @@ void AutoCompletion::insertMatchedChars(int character, const MatchedPairConf & m
 		case int('('):
 			if (matchedPairConf._doParentheses)
 			{
-				if (isCharNextBlank || isInSandwich)
-
+				if (isCharNextBlank || isCharNextCloseSymbol)
 				{
 					matchedChars = ")";
 					_insertedMatchedChars.add(MatchedCharInserted(static_cast<char>(character), caretPos - 1));
@@ -594,7 +628,7 @@ void AutoCompletion::insertMatchedChars(int character, const MatchedPairConf & m
 		case int('['):
 			if (matchedPairConf._doBrackets)
 			{
-				if (isCharNextBlank || isInSandwich)
+				if (isCharNextBlank || isCharNextCloseSymbol)
 				{
 					matchedChars = "]";
 					_insertedMatchedChars.add(MatchedCharInserted(static_cast<char>(character), caretPos - 1));
@@ -605,7 +639,7 @@ void AutoCompletion::insertMatchedChars(int character, const MatchedPairConf & m
 		case int('{'):
 			if (matchedPairConf._doCurlyBrackets)
 			{
-				if (isCharNextBlank || isInSandwich)
+				if (isCharNextBlank || isCharNextCloseSymbol)
 				{
 					matchedChars = "}";
 					_insertedMatchedChars.add(MatchedCharInserted(static_cast<char>(character), caretPos - 1));
@@ -754,18 +788,23 @@ void AutoCompletion::update(int character)
 	}
 }
 
-void AutoCompletion::callTipClick(size_t direction) {
+void AutoCompletion::callTipClick(size_t direction)
+{
 	if (!_funcCompletionActive)
 		return;
 
-	if (direction == 1) {
+	if (direction == 1)
+	{
 		_funcCalltip.showPrevOverload();
-	} else if (direction == 2) {
+	}
+	else if (direction == 2)
+	{
 		_funcCalltip.showNextOverload();
 	}
 }
 
-bool AutoCompletion::setLanguage(LangType language) {
+bool AutoCompletion::setLanguage(LangType language)
+{
 	if (_curLang == language)
 		return true;
 	_curLang = language;
@@ -783,7 +822,8 @@ bool AutoCompletion::setLanguage(LangType language) {
 	_funcCompletionActive = _pXmlFile->LoadFile();
 
 	TiXmlNode * pAutoNode = NULL;
-	if (_funcCompletionActive) {
+	if (_funcCompletionActive)
+	{
 		_funcCompletionActive = false;	//safety
 		TiXmlNode * pNode = _pXmlFile->FirstChild(TEXT("NotepadPlus"));
 		if (!pNode)
@@ -816,7 +856,8 @@ bool AutoCompletion::setLanguage(LangType language) {
         {
 			const TCHAR * val = 0;
 			val = pElem->Attribute(TEXT("ignoreCase"));
-			if (val && !lstrcmp(val, TEXT("no"))) {
+			if (val && !lstrcmp(val, TEXT("no")))
+			{
 				_ignoreCase = false;
 				_funcCalltip._ignoreCase = false;
 			}
@@ -838,9 +879,12 @@ bool AutoCompletion::setLanguage(LangType language) {
 		}
 	}
 
-	if (_funcCompletionActive) {
+	if (_funcCompletionActive)
+	{
 		_funcCalltip.setLanguageXML(_pXmlKeyword);
-	} else {
+	}
+	else
+	{
 		_funcCalltip.setLanguageXML(NULL);
 	}
 

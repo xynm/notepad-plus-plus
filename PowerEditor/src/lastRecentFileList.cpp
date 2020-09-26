@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -174,14 +174,19 @@ void LastRecentFileList::add(const TCHAR *fn)
 	RecentItem itemToAdd(fn);
 
 	int index = find(fn);
-	if (index != -1) {	//already in list, bump upwards
+	if (index != -1)
+	{
+		//already in list, bump upwards
 		remove(index);
 	}
 
-	if (_size == _userMax) {
+	if (_size == _userMax)
+	{
 		itemToAdd._id = _lrfl.back()._id;
 		_lrfl.pop_back();	//remove oldest
-	} else {
+	}
+	else
+	{
 		itemToAdd._id = popFirstAvailableID();
 		++_size;
 	}

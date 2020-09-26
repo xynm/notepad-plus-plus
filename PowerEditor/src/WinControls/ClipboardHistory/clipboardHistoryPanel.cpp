@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -64,7 +64,7 @@ ClipboardData ClipboardHistoryPanel::getClipboadData()
 						{
 							clipboardData.push_back(static_cast<unsigned char>(lpchar[i]));
 						}
-						GlobalUnlock(hglb); 
+						GlobalUnlock(hglbLen); 
 					}
 				}
 			}
@@ -76,7 +76,8 @@ ClipboardData ClipboardHistoryPanel::getClipboadData()
 					clipboardData.push_back(static_cast<unsigned char>(lpchar[i]));
 				}
 			}
-			GlobalUnlock(hglb); 
+			GlobalUnlock(hglb);
+			GlobalUnlock(hglb);
 		}
 	}
 	CloseClipboard();

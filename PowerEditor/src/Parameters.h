@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -91,6 +91,10 @@ enum ChangeDetect { cdDisabled = 0x0, cdEnabledOld = 0x01, cdEnabledNew = 0x02, 
 enum BackupFeature {bak_none = 0, bak_simple = 1, bak_verbose = 2};
 enum OpenSaveDirSetting {dir_followCurrent = 0, dir_last = 1, dir_userDef = 2};
 enum MultiInstSetting {monoInst = 0, multiInstOnSession = 1, multiInst = 2};
+enum writeTechnologyEngine {defaultTechnology = 0, directWriteTechnology = 1};
+enum urlMode {urlDisable = 0, urlNoUnderLineFg, urlUnderLineFg, urlNoUnderLineBg, urlUnderLineBg,
+              urlMin = urlDisable,
+              urlMax = urlUnderLineBg};
 
 const int LANG_INDEX_INSTR = 0;
 const int LANG_INDEX_INSTR2 = 1;
@@ -136,6 +140,8 @@ struct Position
 	int _xOffset = 0;
 	int _selMode = 0;
 	int _scrollWidth = 1;
+	int _offset = 0;
+	int _wrapCount = 0;
 };
 
 
@@ -770,6 +776,11 @@ struct NppGUI final
 		_appPos.right = 1100;
 		_appPos.bottom = 700;
 
+		_findWindowPos.left = 0;
+		_findWindowPos.top = 0;
+		_findWindowPos.right = 0;
+		_findWindowPos.bottom = 0;
+
 		_defaultDir[0] = 0;
 		_defaultDirExp[0] = 0;
 	}
@@ -795,11 +806,15 @@ struct NppGUI final
 	int _tabSize = 4;
 	bool _tabReplacedBySpace = false;
 
+	bool _finderLinesAreCurrentlyWrapped = false;
+
 	int _fileAutoDetection = cdEnabledNew;
 
 	bool _checkHistoryFiles = false;
 
 	RECT _appPos;
+
+	RECT _findWindowPos;
 
 	bool _isMaximized = false;
 	bool _isMinimizedToTray = false;
@@ -824,15 +839,14 @@ struct NppGUI final
 	char _rightmostDelimiter = ')';
 	bool _delimiterSelectionOnEntireDocument = false;
 	bool _backSlashIsEscapeCharacterForSql = true;
+	bool _stopFillingFindField = false;
 	bool _monospacedFontFindDlg = false;
+	bool _findDlgAlwaysVisible = false;
+	bool _confirmReplaceInAllOpenDocs = true;
+	writeTechnologyEngine _writeTechnologyEngine = defaultTechnology;
 	bool _isWordCharDefault = true;
 	std::string _customWordChars;
-
-	// 0 : do nothing
-	// 1 : don't draw underline
-	// 2 : draw underline
-	int _styleURL = 2;
-
+	urlMode _styleURL = urlUnderLineFg;
 	NewDocDefaultSettings _newDocDefaultSettings;
 
 
@@ -856,6 +870,8 @@ struct NppGUI final
 
 	generic_string _definedSessionExt;
 	generic_string _definedWorkspaceExt;
+
+	generic_string _commandLineInterpreter = TEXT("cmd");
 
 	struct AutoUpdateOptions
 	{
@@ -908,14 +924,16 @@ struct ScintillaViewParams
 	bool _currentLineHilitingShow = true;
 	bool _wrapSymbolShow = false;
 	bool _doWrap = false;
-	int _edgeMode = EDGE_NONE;
-	int _edgeNbColumn = 80;
+	bool _isEdgeBgMode = false;
+
+	std::vector<size_t> _edgeMultiColumnPos;
 	int _zoom = 0;
 	int _zoom2 = 0;
 	bool _whiteSpaceShow = false;
 	bool _eolShow = false;
 	int _borderWidth = 2;
 	bool _scrollBeyondLastLine = false;
+	bool _rightClickKeepsSelection = false;
 	bool _disableAdvancedScrolling = false;
 	bool _doSmoothFont = false;
 	bool _showBorderEdge = true;
@@ -1155,9 +1173,11 @@ struct FindHistory final
 	transparencyMode _transparencyMode = onLossingFocus;
 	int _transparency = 150;
 
-	bool _isDlgAlwaysVisible = false;
 	bool _isFilterFollowDoc = false;
 	bool _isFolderFollowDoc = false;
+
+	// Allow regExpr backward search: this option is not present in UI, only to modify in config.xml
+	bool _regexBackward4PowerUser = false;
 };
 
 
@@ -1526,6 +1546,8 @@ public:
 	};
 
 	const std::vector<generic_string> getFileBrowserRoots() const { return _fileBrowserRoot; };
+	generic_string getFileBrowserSelectedItemPath() const { return _fileBrowserSelectedItemPath; };
+
 	void setWorkSpaceFilePath(int i, const TCHAR *wsFile);
 
 	void setWorkingDir(const TCHAR * newPath);
@@ -1615,6 +1637,14 @@ public:
 		return _userPath;
 	}
 
+	generic_string getUserDefineLangFolderPath() const {
+		return _userDefineLangsFolderPath;
+	}
+
+	generic_string getUserDefineLangPath() const {
+		return _userDefineLangPath;
+	}
+
 	bool writeSettingsFilesOnCloudForThe1stTime(const generic_string & cloudSettingsPath);
 	void setCloudChoice(const TCHAR *pathChoice);
 	void removeCloudChoice();
@@ -1698,6 +1728,7 @@ private:
 
 	UserLangContainer *_userLangArray[NB_MAX_USER_LANG];
 	unsigned char _nbUserLang = 0; // won't be exceeded to 255;
+	generic_string _userDefineLangsFolderPath;
 	generic_string _userDefineLangPath;
 	ExternalLangContainer *_externalLangArray[NB_MAX_EXTERNAL_LANG];
 	int _nbExternalLang = 0;
@@ -1723,6 +1754,10 @@ private:
 
 public:
 	void setShortcutDirty() { _isAnyShortcutModified = true; };
+	void setAdminMode(bool isAdmin) { _isAdminMode = isAdmin; }
+	bool isAdmin() const { return _isAdminMode; }
+	bool regexBackward4PowerUser() const { return _findHistory._regexBackward4PowerUser; }
+
 private:
 	bool _isAnyShortcutModified = false;
 	std::vector<CommandShortcut> _shortcuts;			//main menu shortuts. Static size
@@ -1761,6 +1796,7 @@ private:
 	generic_string _workSpaceFilePathes[3];
 
 	std::vector<generic_string> _fileBrowserRoot;
+	generic_string _fileBrowserSelectedItemPath;
 
 	Accelerator *_pAccelerator;
 	ScintillaAccelerator * _pScintAccelerator;
@@ -1782,6 +1818,7 @@ private:
 	generic_string _wingupParams;
 	generic_string _wingupDir;
 	bool _isElevationRequired = false;
+	bool _isAdminMode = false;
 
 public:
 	generic_string getWingupFullPath() const { return _wingupFullPath; };

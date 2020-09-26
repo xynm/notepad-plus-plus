@@ -3,11 +3,11 @@
 	Dutch localization for Notepad++ 7.5.6
 	Last modified Mon, Mar 26 2018 by Klaas Nekeman.
 	Please e-mail errors, suggestions etc. to knekeman(at)gmail.com.
-	Dutch localization for Notepad++ 7.8.1
-	Last modified Wed, Oct 23 2019 by xylographe <wr86420@gmail.com>.
+	Dutch localization for Notepad++ 7.8.7
+	Last modified Tue, May 26 2020 by xylographe <wr86420@gmail.com>.
 -->
 <NotepadPlus>
-	<Native-Langue name="Nederlands" filename="dutch.xml" version="7.8.1">
+	<Native-Langue name="Nederlands" filename="dutch.xml" version="7.8.7">
 		<Menu>
 			<Main>
 				<!-- Main Menu Entries -->
@@ -70,6 +70,7 @@
 					<Item subMenuId="encoding-turkish"          name="Turks"/>
 					<Item subMenuId="encoding-westernEuropean"  name="West-Europees"/>
 					<Item subMenuId="encoding-vietnamese"       name="Vietnamees"/>
+					<Item subMenuId="language-userDefinedLanguage" name="Gebruikerssyntaxis"/>
 					<Item subMenuId="settings-import"           name="Importeren"/>
 					<Item subMenuId="tools-md5"                 name="MD5"/>
 					<Item subMenuId="tools-sha256"              name="SHA-256"/>
@@ -280,6 +281,12 @@
 					<Item id="45011" name="Naar UTF-8-BOM converteren"/>
 					<Item id="45012" name="Naar UCS-2 Big Endian converteren"/>
 					<Item id="45013" name="Naar UCS-2 Little Endian converteren"/>
+					<Item id="45060" name="Big5 (Taiwan)"/>
+					<Item id="45061" name="GB2312 (China)"/>
+					<Item id="45054" name="OEM 861: Ĳslands"/>
+					<Item id="45057" name="OEM 865: Deens &amp;&amp; Noors"/>
+					<Item id="45053" name="OEM 860: Portugees"/>
+					<Item id="45056" name="OEM 863: Canadees-Frans"/>
 
 					<Item id="10001" name="Naar deelvenster verplaatsen"/>
 					<Item id="10002" name="Naar deelvenster kopiëren"/>
@@ -288,6 +295,7 @@
 
 					<Item id="46001" name="&amp;Opmaak..."/>
 					<Item id="46250" name="Syntaxismarkering ontwerpen..."/>
+					<Item id="46300" name="Syntaxismarkering map openen..."/>
 					<Item id="46180" name="Aangepast"/>
 					<Item id="47000" name="Over..."/>
 					<Item id="47010" name="Opdrachtregelargumenten..."/>
@@ -314,7 +322,6 @@
 					<Item id="48505" name="Genereren voor bestanden..."/>
 					<Item id="48506" name="Genereren naar klembord"/>
 					<Item id="49000" name="&amp;Uitvoeren..."/>
-
 					<Item id="50000" name="Functie aanvullen"/>
 					<Item id="50001" name="Woord aanvullen"/>
 					<Item id="50002" name="Functie-argumenten weergeven"/>
@@ -325,7 +332,7 @@
 					<Item id="44042" name="Regels verbergen"/>
 					<Item id="42040" name="Alle recentelijk geopende bestanden openen"/>
 					<Item id="42041" name="Bestandsgeschiedenis wissen"/>
-					<Item id="48016" name="Macro's &amp;wijzigen ..."/>
+					<Item id="48016" name="Macro's &amp;wijzigen..."/>
 					<Item id="48017" name="Opdrachten &amp;wijzigen..."/>
 				</Commands>
 			</Main>
@@ -744,12 +751,11 @@
 					<Item id="6206" name="Regelnummers weergeven"/>
 					<Item id="6207" name="Bladwijzers weergeven"/>
 					<Item id="6208" name="Regeleinde weergeven"/>
-					<Item id="6209" name="Aantal kolommen:"/>
 					<Item id="6234" name="Geavanceerd scrollen uitschakelen&#xD;(ivm eventuele touchpadproblemen)"/>
 
 					<Item id="6211" name="Regeleinde"/>
-					<Item id="6212" name="Lijn"/>
 					<Item id="6213" name="Achtergrond"/>
+					<Item id="6237" name="Voeg een kolommarkering toe door haar positie aan te geven met een geheel getal.&#xD;Definieer meerdere kolommarkeringen door hun posities met witruimte te scheiden."/>
 					<Item id="6214" name="Actieve regel markeren"/>
 					<Item id="6215" name="ClearType inschakelen"/>
 					<Item id="6231" name="Breedte vensterrand"/>
@@ -777,11 +783,12 @@
 					<Item id="6413" name="Standaardlocatie voor laden en opslaan"/>
 					<Item id="6414" name="Huidige documentlocatie"/>
 					<Item id="6415" name="Laatst gekozen map"/>
-					<Item id="6430" name="Gebruik vensters nieuwe stijl (zonder bestandsextensie optie &amp;&amp; zonder Unix stijl paden)"/>
+					<Item id="6430" name="Gebruik vensters nieuwe stijl (zonder Unix stijl paden)"/>
 					<Item id="6431" name="Bij neerzetten, alle bestanden uit map openen ipv map als werkomgeving te openen"/>
 				</DefaultDir>
 
 				<FileAssoc title="Bestandsassociaties">
+					<Item id="4008" name="Herstart Notepad++ in de beheerdersmodus om deze functie te kunnen gebruiken."/>
 					<Item id="4009" name="Beschikbare extensies:"/>
 					<Item id="4010" name="Geregistreerd:"/>
 				</FileAssoc>
@@ -867,6 +874,7 @@
 				</Backup>
 
 				<AutoCompletion title="Automatisch aanvullen">
+					<Item id="6115" name="Automatisch inspringen"/>
 					<Item id="6807" name="Automatisch aanvullen"/>
 					<Item id="6808" name="Activeren"/>
 					<Item id="6809" name="Functies aanvullen"/>
@@ -942,11 +950,11 @@
 					<Item id="6314" name="Monospace-lettertype in Zoeken/Vervangen invoervakken (Notepad++ herstart nodig)"/>
 					<Item id="6337" name="Bestandsextensie werkomgeving:"/>
 					<Item id="6114" name="Activeren"/>
-					<Item id="6115" name="Insprong automatisch toepassen"/>
 					<Item id="6117" name="Volgorde van wisselen onthouden"/>
 					<Item id="6344" name="Document voorvertoning"/>
 					<Item id="6345" name="Voorvertoning bij tab"/>
 					<Item id="6346" name="Voorvertoning bij documentstructuur"/>
+					<Item id="6348" name="Zoeken/Vervangen invoervakken niet voorinvullen"/>
 				</MISC>
 			</Preference>
 			<MultiMacro title="Macro meerdere keren uitvoeren">
@@ -994,11 +1002,11 @@
 			</FindInFinder>
 			<DoSaveOrNot title="Bestand opslaan">
 				<Item id="1761" name="Bestand &quot;$STR_REPLACE$&quot; opslaan?"/>
-				<Item id="6" name="Ja"/>
-				<Item id="7" name="Nee"/>
+				<Item id="6" name="&amp;Ja"/>
+				<Item id="7" name="&amp;Nee"/>
 				<Item id="2" name="Annuleren"/>
-				<Item id="4" name="Ja op alles"/>
-				<Item id="5" name="Nee op alles"/>
+				<Item id="4" name="J&amp;a op alles"/>
+				<Item id="5" name="N&amp;ee op alles"/>
 			</DoSaveOrNot>
 		</Dialog>
 
@@ -1099,6 +1107,10 @@
 			<XpUpdaterProblem
 				title="Notepad++ Updater"
 				message="Notepad++ updater is niet compatibel met XP vanwege de verouderde beveiligingslaag onder XP.&#xD;Wilt u naar Notepad++ pagina gaan om de nieuwste versie te downloaden?"
+			/>
+			<GUpProxyConfNeedAdminMode
+				title="Proxyserver-instellingen"
+				message="Herstart Notepad++ in de beheerdersmodus om de Proxyserver-instellingen te wijzigen."
 			/>
 			<DocTooDirtyToMonitor
 				title="Bestandswijzigingen bewaak probleem"
@@ -1234,6 +1246,7 @@
 			<ColumnName name="Naam"/>
 			<ColumnPath name="Pad"/>
 			<ColumnType name="Type"/>
+			<ColumnSize name="Grootte"/>
 		</WindowsDlg>
 		<AsciiInsertion>
 			<PanelTitle name="ASCII-karakters / HTML-entiteiten"/>
@@ -1344,6 +1357,9 @@
 			/>
 			<two-find-buttons-tip
 				value="2-zoek-knoppen modus"
+			/>
+			<find-in-files-filter-tip
+				value="In cpp, cxx, hpp en hxx bestanden zoeken:&#xD;*.cpp *.cxx *.hpp *.hxx&#xD;&#xD;In alle bestanden behalve exe, obj en log zoeken:&#xD;*.* !*.exe !*.obj !*.log"
 			/>
 			<find-status-top-reached
 				value="Zoeken: 1ste locatie vanuit document einde gevonden. De start van het document is gepasseerd."
@@ -1512,6 +1528,30 @@
 			/>
 			<summary-nbrange
 				value=" selecties"
+			/>
+			<replace-in-files-confirm-title
+				value="Vervanging bevestigen"
+			/>
+			<replace-in-files-confirm-directory
+				value="Wilt u alle locaties vervangen in: "
+			/>
+			<replace-in-files-confirm-filetype
+				value="Voor bestandstype: "
+			/>
+			<find-result-caption
+				value="Zoekresultaten"
+			/>
+			<find-result-title
+				value="Zoeken"
+			/>
+			<find-result-title-info
+				value="($INT_REPLACE1$ treffers in $INT_REPLACE2$ uit $INT_REPLACE3$ bestanden)"
+			/>
+			<find-result-title-info-extra
+				value=" - Regelfiltermodus: alleen treffers tonen"
+			/>
+			<find-result-hits
+				value="($INT_REPLACE$ treffers)"
 			/>
 		</MiscStrings>
 	</Native-Langue>

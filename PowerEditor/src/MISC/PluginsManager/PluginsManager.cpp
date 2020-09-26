@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -27,7 +27,7 @@
 
 
 #include <shlwapi.h>
-#include <DbgHelp.h>
+#include <dbghelp.h>
 #include <algorithm>
 #include <cinttypes>
 #include "PluginsManager.h"
@@ -112,8 +112,12 @@ static WORD getBinaryArchitectureType(const TCHAR *filePath)
 	return machine_type;
 }
 
-#define	LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR	0x00000100
-#define	LOAD_LIBRARY_SEARCH_DEFAULT_DIRS	0x00001000
+#ifndef LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR
+	#define	LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR	0x00000100
+#endif
+#ifndef LOAD_LIBRARY_SEARCH_DEFAULT_DIRS
+	#define	LOAD_LIBRARY_SEARCH_DEFAULT_DIRS	0x00001000
+#endif
 
 int PluginsManager::loadPlugin(const TCHAR *pluginFilePath)
 {
@@ -412,7 +416,8 @@ bool PluginsManager::getShortcutByCmdID(int cmdID, ShortcutKey *sk)
 // returns false if cmdID not provided, true otherwise
 bool PluginsManager::removeShortcutByCmdID(int cmdID)
 {
-	if (cmdID == 0) { return false; }
+	if (cmdID == 0)
+		return false;
 
 	NppParameters& nppParam = NppParameters::getInstance();
 	vector<PluginCmdShortcut> & pluginCmdSCList = nppParam.getPluginCommandList();

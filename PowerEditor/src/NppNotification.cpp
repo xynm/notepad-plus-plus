@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -88,6 +88,10 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 				prevWasEdit = false;
 			}
 
+			if (notification->modificationType & SC_MOD_CHANGEINDICATOR)
+			{
+				::InvalidateRect(notifyView->getHSelf(), NULL, FALSE);
+			}
 			break;
 		}
 
@@ -253,8 +257,8 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 				{
 					if (!_tabPopupDropMenu.isCreated())
 					{
-						TCHAR goToView[32] = TEXT("Move to other view");
-						TCHAR cloneToView[32] = TEXT("Clone to other View");
+						TCHAR goToView[32] = TEXT("Move to Other View");
+						TCHAR cloneToView[32] = TEXT("Clone to Other View");
 						vector<MenuItemUnit> itemUnitArray;
 						itemUnitArray.push_back(MenuItemUnit(IDM_VIEW_GOTO_ANOTHER_VIEW, goToView));
 						itemUnitArray.push_back(MenuItemUnit(IDM_VIEW_CLONE_TO_ANOTHER_VIEW, cloneToView));
@@ -603,6 +607,31 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 			break;
 		}
 
+		case SCN_MARGINRIGHTCLICK:
+		{
+			if (notification->nmhdr.hwndFrom == _mainEditView.getHSelf())
+				switchEditViewTo(MAIN_VIEW);
+			else if (notification->nmhdr.hwndFrom == _subEditView.getHSelf())
+				switchEditViewTo(SUB_VIEW);
+
+			if ((notification->margin == ScintillaEditView::_SC_MARGE_SYBOLE) && !notification->modifiers)
+			{
+				POINT p;
+				::GetCursorPos(&p);
+				MenuPosition& menuPos = getMenuPosition("search-bookmark");
+				HMENU hSearchMenu = ::GetSubMenu(_mainMenuHandle, menuPos._x);
+				if (hSearchMenu)
+				{
+					HMENU hBookmarkMenu = ::GetSubMenu(hSearchMenu, menuPos._y);
+					if (hBookmarkMenu)
+					{
+						TrackPopupMenu(hBookmarkMenu, 0, p.x, p.y, 0, _pPublicInterface->getHSelf(), NULL);
+					}
+				}
+			}
+			break;
+		}
+
 		case SCN_FOLDINGSTATECHANGED :
 		{
 			if ((notification->nmhdr.hwndFrom == _mainEditView.getHSelf()) || (notification->nmhdr.hwndFrom == _subEditView.getHSelf()))
@@ -611,9 +640,7 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 
 				if (!_isFolding)
 				{
-					int urlAction = (NppParameters::getInstance()).getNppGUI()._styleURL;
-					if ((urlAction == 1) || (urlAction == 2))
-						addHotSpot();
+					addHotSpot();
 				}
 
 				if (_pDocMap)
@@ -789,7 +816,27 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 					}
 				}
 			}
+			else
+			{ // Double click with no modifiers
+				// Check wether cursor is within URL
+				auto indicMsk = notifyView->execute(SCI_INDICATORALLONFOR, notification->position);
+				if (!(indicMsk & (1 << URL_INDIC))) break;
+				auto startPos = notifyView->execute(SCI_INDICATORSTART, URL_INDIC, notification->position);
+				auto endPos = notifyView->execute(SCI_INDICATOREND, URL_INDIC, notification->position);
+				if ((notification->position < startPos) || (notification->position > endPos)) break;
 
+				// WM_LBUTTONUP goes to opening browser instead of Scintilla here, because the mouse is not captured.
+				// The missing message causes mouse cursor flicker as soon as the mouse cursor is moved to a position outside the text editing area.
+				::PostMessage(notifyView->getHSelf(), WM_LBUTTONUP, 0, 0);
+
+				// Revert selection of current word. Best to this early, otherwise the
+				// selected word is visible all the time while the browser is starting
+				notifyView->execute(SCI_SETSEL, notification->position, notification->position); 
+
+				// Open URL
+				generic_string url = notifyView->getGenericTextAsString(static_cast<size_t>(startPos), static_cast<size_t>(endPos));
+				::ShellExecute(_pPublicInterface->getHSelf(), TEXT("open"), url.c_str(), NULL, NULL, SW_SHOW);
+			}
 			break;
 		}
 
@@ -804,9 +851,7 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 			// replacement for obsolete custom SCN_SCROLLED
 			if (notification->updated & SC_UPDATE_V_SCROLL)
 			{
-				int urlAction = (NppParameters::getInstance()).getNppGUI()._styleURL;
-				if ((urlAction == 1) || (urlAction == 2))
-					addHotSpot();
+				addHotSpot();
 			}
 
 			// if it's searching/replacing, then do nothing
@@ -946,17 +991,22 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 			if (not notifyView)
 				return FALSE;
 
+			// Check if a restore position is needed. 
+			// Restoring a position must done after SCN_PAINTED notification so that it works in every circumstances (including wrapped large file)
+			_mainEditView.restoreCurrentPosPostStep();
+			_subEditView.restoreCurrentPosPostStep();
+
 			// ViewMoveAtWrappingDisableFix: Disable wrapping messes up visible lines.
 			// Therefore save view position before in IDM_VIEW_WRAP and restore after SCN_PAINTED, as doc. says
 			if (_mainEditView.isWrapRestoreNeeded())
 			{
-				_mainEditView.restoreCurrentPos();
+				_mainEditView.restoreCurrentPosPreStep();
 				_mainEditView.setWrapRestoreNeeded(false);
 			}
 
 			if (_subEditView.isWrapRestoreNeeded())
 			{
-				_subEditView.restoreCurrentPos();
+				_subEditView.restoreCurrentPosPreStep();
 				_subEditView.setWrapRestoreNeeded(false);
 			}
 			notifyView->updateLineNumberWidth();
@@ -968,9 +1018,7 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 			// if it's searching/replacing, then do nothing
 			if ((_linkTriggered && !nppParam._isFindReplacing) || notification->wParam == LINKTRIGGERED)
 			{
-				int urlAction = (NppParameters::getInstance()).getNppGUI()._styleURL;
-				if ((urlAction == 1) || (urlAction == 2))
-					addHotSpot();
+				addHotSpot();
 				_linkTriggered = false;
 			}
 
@@ -979,42 +1027,6 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 				_pDocMap->wrapMap();
 				_pDocMap->scrollMap();
 			}
-			break;
-		}
-
-		case SCN_HOTSPOTDOUBLECLICK:
-		{
-			if (not notifyView)
-				return FALSE;
-
-			// Get the style and make sure it is a hotspot
-			uint8_t style = static_cast<uint8_t>(notifyView->execute(SCI_GETSTYLEAT, notification->position));
-			if (not notifyView->execute(SCI_STYLEGETHOTSPOT, style))
-				break;
-
-			long long startPos, endPos, docLen;
-			startPos = endPos = notification->position;
-			docLen = notifyView->getCurrentDocLen();
-
-			// Walk backwards/forwards to get the contiguous text in the same style
-			while (startPos > 0 && static_cast<uint8_t>(notifyView->execute(SCI_GETSTYLEAT, static_cast<WPARAM>(startPos - 1))) == style)
-				startPos--;
-			while (endPos < docLen && static_cast<uint8_t>(notifyView->execute(SCI_GETSTYLEAT, static_cast<WPARAM>(endPos))) == style)
-				endPos++;
-
-			// Select the entire link
-			notifyView->execute(SCI_SETANCHOR, static_cast<WPARAM>(startPos));
-			notifyView->execute(SCI_SETCURRENTPOS, static_cast<WPARAM>(endPos));
-
-			generic_string url = notifyView->getGenericTextAsString(static_cast<size_t>(startPos), static_cast<size_t>(endPos));
-
-			// remove the flickering: it seems a mouse left button up is missing after SCN_HOTSPOTDOUBLECLICK
-			::PostMessage(notifyView->getHSelf(), WM_LBUTTONUP, 0, 0);
-			auto curPos = notifyView->execute(SCI_GETCURRENTPOS);
-			notifyView->execute(SCI_SETSEL, curPos, curPos);
-
-			::ShellExecute(_pPublicInterface->getHSelf(), TEXT("open"), url.c_str(), NULL, NULL, SW_SHOW);
-
 			break;
 		}
 

@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -98,7 +98,8 @@ generic_string ShortcutMapper::getTabString(size_t i) const
 }
 
 
-void ShortcutMapper::initBabyGrid() {
+void ShortcutMapper::initBabyGrid()
+{
 	RECT rect;
 	getClientRect(rect);
 
@@ -153,7 +154,8 @@ bool ShortcutMapper::isFilterValid(Shortcut sc)
 {
 	bool match = false;
 	generic_string shortcut_name = stringToLower(generic_string(sc.getName()));
-	if (_shortcutFilter.empty()) {
+	if (_shortcutFilter.empty())
+	{
 		return true;
 	}
 	// test the filter on the shortcut name
@@ -886,7 +888,7 @@ INT_PTR CALLBACK ShortcutMapper::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 							case STATE_PLUGIN:
 							case STATE_SCINTILLA: 
 							{
-								return FALSE;			//this is bad
+								return FALSE;
 							}
 
 							case STATE_MACRO: 

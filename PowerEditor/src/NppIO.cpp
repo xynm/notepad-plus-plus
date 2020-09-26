@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -28,14 +28,16 @@
 
 #include <time.h>
 #include <shlwapi.h>
-#include <ShlObj.h>
+#include <shlobj.h>
 #include "Notepad_plus_Window.h"
 #include "FileDialog.h"
 #include "EncodingMapper.h"
 #include "VerticalFileSwitcher.h"
 #include "functionListPanel.h"
 #include "ReadDirectoryChanges.h"
+#include "ReadFileChanges.h"
 #include <tchar.h>
+#include <unordered_set>
 
 using namespace std;
 
@@ -56,30 +58,35 @@ DWORD WINAPI Notepad_plus::monitorFileOnChange(void * params)
 	const DWORD dwNotificationFlags = FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_SIZE;
 
 	// Create the monitor and add directory to watch.
-	CReadDirectoryChanges changes;
-	changes.AddDirectory(folderToMonitor, true, dwNotificationFlags);
+	CReadDirectoryChanges dirChanges;
+	dirChanges.AddDirectory(folderToMonitor, true, dwNotificationFlags);
 
-	HANDLE changeHandles[] = { buf->getMonitoringEvent(), changes.GetWaitHandle() };
+	CReadFileChanges fileChanges;
+	fileChanges.AddFile(fullFileName, FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE);
+
+	HANDLE changeHandles[] = { buf->getMonitoringEvent(), dirChanges.GetWaitHandle() };
 
 	bool toBeContinued = true;
 
 	while (toBeContinued)
 	{
-		DWORD waitStatus = ::WaitForMultipleObjects(_countof(changeHandles), changeHandles, FALSE, INFINITE);
+		DWORD waitStatus = ::WaitForMultipleObjects(_countof(changeHandles), changeHandles, FALSE, 250);
 		switch (waitStatus)
 		{
 			case WAIT_OBJECT_0 + 0:
-				// Mutex was signaled. User removes this folder or file browser is closed
+			// Mutex was signaled. User removes this folder or file browser is closed
+			{
 				toBeContinued = false;
+			}
 			break;
 
 			case WAIT_OBJECT_0 + 1:
-				// We've received a notification in the queue.
+			// We've received a notification in the queue.
 			{
 				DWORD dwAction;
 				generic_string fn;
 				// Process all available changes, ignore User actions
-				while (changes.Pop(dwAction, fn))
+				while (dirChanges.Pop(dwAction, fn))
 				{
 					// Fix monitoring files which are under root problem
 					size_t pos = fn.find(TEXT("\\\\"));
@@ -102,6 +109,13 @@ DWORD WINAPI Notepad_plus::monitorFileOnChange(void * params)
 			}
 			break;
 
+			case WAIT_TIMEOUT:
+			{
+				if (fileChanges.DetectChanges())
+					::PostMessage(h, NPPM_INTERNAL_RELOADSCROLLTOEND, reinterpret_cast<WPARAM>(buf), 0);
+			}
+			break;
+
 			case WAIT_IO_COMPLETION:
 				// Nothing to do.
 			break;
@@ -110,9 +124,50 @@ DWORD WINAPI Notepad_plus::monitorFileOnChange(void * params)
 
 	// Just for sample purposes. The destructor will
 	// call Terminate() automatically.
-	changes.Terminate();
+	dirChanges.Terminate();
+	fileChanges.Terminate();
 	delete monitorInfo;
 	return EXIT_SUCCESS;
+}
+
+void resolveLinkFile(generic_string& linkFilePath)
+{
+	IShellLink* psl;
+	WCHAR targetFilePath[MAX_PATH];
+	WIN32_FIND_DATA wfd;
+
+	HRESULT hres = CoInitialize(NULL);
+	if (SUCCEEDED(hres))
+	{
+		hres = CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, IID_IShellLink, (LPVOID*)&psl);
+		if (SUCCEEDED(hres))
+		{
+			IPersistFile* ppf;
+			hres = psl->QueryInterface(IID_IPersistFile, (void**)&ppf);
+			if (SUCCEEDED(hres))
+			{
+				// Load the shortcut. 
+				hres = ppf->Load(linkFilePath.c_str(), STGM_READ);
+				if (SUCCEEDED(hres) && hres != S_FALSE)
+				{
+					// Resolve the link. 
+					hres = psl->Resolve(NULL, 0);
+					if (SUCCEEDED(hres) && hres != S_FALSE)
+					{
+						// Get the path to the link target. 
+						hres = psl->GetPath(targetFilePath, MAX_PATH, (WIN32_FIND_DATA*)&wfd, SLGP_SHORTPATH);
+						if (SUCCEEDED(hres) && hres != S_FALSE)
+						{
+							linkFilePath = targetFilePath;
+						}
+					}
+				}
+				ppf->Release();
+			}
+			psl->Release();
+		}
+		CoUninitialize();
+	}
 }
 
 BufferID Notepad_plus::doOpen(const generic_string& fileName, bool isRecursive, bool isReadOnly, int encoding, const TCHAR *backupFileName, FILETIME fileNameTimestamp)
@@ -121,6 +176,9 @@ BufferID Notepad_plus::doOpen(const generic_string& fileName, bool isRecursive, 
 	if (fileName.size() >= longFileNameBufferSize - 1) // issue with all other sub-routines
 		return BUFFER_INVALID;
 
+	generic_string targetFileName = fileName;
+	resolveLinkFile(targetFileName);
+
 	//If [GetFullPathName] succeeds, the return value is the length, in TCHARs, of the string copied to lpBuffer, not including the terminating null character.
 	//If the lpBuffer buffer is too small to contain the path, the return value [of GetFullPathName] is the size, in TCHARs, of the buffer that is required to hold the path and the terminating null character.
 	//If [GetFullPathName] fails for any other reason, the return value is zero.
@@ -128,7 +186,7 @@ BufferID Notepad_plus::doOpen(const generic_string& fileName, bool isRecursive, 
 	NppParameters& nppParam = NppParameters::getInstance();
 	TCHAR longFileName[longFileNameBufferSize];
 
-	const DWORD getFullPathNameResult = ::GetFullPathName(fileName.c_str(), longFileNameBufferSize, longFileName, NULL);
+	const DWORD getFullPathNameResult = ::GetFullPathName(targetFileName.c_str(), longFileNameBufferSize, longFileName, NULL);
 	if (getFullPathNameResult == 0)
 	{
 		return BUFFER_INVALID;
@@ -148,12 +206,12 @@ BufferID Notepad_plus::doOpen(const generic_string& fileName, bool isRecursive, 
 	bool isSnapshotMode = backupFileName != NULL && PathFileExists(backupFileName);
 	if (isSnapshotMode && !PathFileExists(longFileName)) // UNTITLED
 	{
-		wcscpy_s(longFileName, fileName.c_str());
+		wcscpy_s(longFileName, targetFileName.c_str());
 	}
     _lastRecentFileList.remove(longFileName);
 
 	generic_string fileName2Find;
-	generic_string gs_fileName{ fileName };
+	generic_string gs_fileName{ targetFileName };
 
 
 	// "fileName" could be:
@@ -162,7 +220,7 @@ BufferID Notepad_plus::doOpen(const generic_string& fileName, bool isRecursive, 
 	// 3. a file name with relative path to open or create
 
 	// Search case 1 & 2 firstly
-	BufferID foundBufID = MainFileManager.getBufferFromName(fileName.c_str());
+	BufferID foundBufID = MainFileManager.getBufferFromName(targetFileName.c_str());
 
 	if (foundBufID == BUFFER_INVALID)
 		fileName2Find = longFileName;
@@ -196,7 +254,9 @@ BufferID Notepad_plus::doOpen(const generic_string& fileName, bool isRecursive, 
 	if (isFileWorkspace(longFileName) && PathFileExists(longFileName))
 	{
 		nppParam.setWorkSpaceFilePath(0, longFileName);
-		command(IDM_VIEW_PROJECT_PANEL_1);
+		// This line switches to Project Panel 1 while starting up Npp
+		// and after dragging a workspace file to Npp:
+		launchProjectPanel(IDM_VIEW_PROJECT_PANEL_1, &_pProjectPanel_1, 0);
 		return BUFFER_INVALID;
 	}
 
@@ -347,19 +407,19 @@ BufferID Notepad_plus::doOpen(const generic_string& fileName, bool isRecursive, 
     }
     else
     {
-        if (globbing || ::PathIsDirectory(fileName.c_str()))
+        if (globbing || ::PathIsDirectory(targetFileName.c_str()))
         {
             vector<generic_string> fileNames;
             vector<generic_string> patterns;
             if (globbing)
             {
-                const TCHAR * substring = wcsrchr(fileName.c_str(), TCHAR('\\'));
+                const TCHAR * substring = wcsrchr(targetFileName.c_str(), TCHAR('\\'));
 				if (substring)
 				{
-					size_t pos = substring - fileName.c_str();
+					size_t pos = substring - targetFileName.c_str();
 
 					patterns.push_back(substring + 1);
-					generic_string dir(fileName.c_str(), pos + 1); // use char * to evoke:
+					generic_string dir(targetFileName.c_str(), pos + 1); // use char * to evoke:
 																   // string (const char* s, size_t n);
 																   // and avoid to call (if pass string) :
 																   // string (const string& str, size_t pos, size_t len = npos);
@@ -369,8 +429,8 @@ BufferID Notepad_plus::doOpen(const generic_string& fileName, bool isRecursive, 
             }
             else
             {
-                generic_string fileNameStr = fileName;
-                if (fileName[fileName.size() - 1] != '\\')
+                generic_string fileNameStr = targetFileName;
+                if (targetFileName[targetFileName.size() - 1] != '\\')
                     fileNameStr += TEXT("\\");
 
                 patterns.push_back(TEXT("*"));
@@ -461,13 +521,13 @@ bool Notepad_plus::doReload(BufferID id, bool alert)
 	if (mainVisisble)
 	{
 		_mainEditView.execute(SCI_SETDOCPOINTER, 0, pBuf->getDocument());
-		_mainEditView.restoreCurrentPos();
+		_mainEditView.restoreCurrentPosPreStep();
 	}
 
 	if (subVisisble)
 	{
 		_subEditView.execute(SCI_SETDOCPOINTER, 0, pBuf->getDocument());
-		_subEditView.restoreCurrentPos();
+		_subEditView.restoreCurrentPosPreStep();
 	}
 
 	// Once reload is complete, activate buffer which will take care of
@@ -723,7 +783,7 @@ void Notepad_plus::doClose(BufferID id, int whichOne, bool doDeleteBackup)
 	return;
 }
 
-generic_string Notepad_plus::exts2Filters(const generic_string& exts) const
+generic_string Notepad_plus::exts2Filters(const generic_string& exts, int maxExtsLen) const
 {
 	const TCHAR *extStr = exts.c_str();
 	TCHAR aExt[MAX_PATH];
@@ -731,6 +791,7 @@ generic_string Notepad_plus::exts2Filters(const generic_string& exts) const
 
 	int j = 0;
 	bool stop = false;
+
 	for (size_t i = 0, len = exts.length(); i < len && j < MAX_PATH - 1; ++i)
 	{
 		if (extStr[i] == ' ')
@@ -747,6 +808,12 @@ generic_string Notepad_plus::exts2Filters(const generic_string& exts) const
 					filters += TEXT(";");
 				}
 				j = 0;
+
+				if (maxExtsLen != -1 && i >= static_cast<size_t>(maxExtsLen))
+				{
+					filters += TEXT(" ... ");
+					break;
+				}
 			}
 		}
 		else
@@ -773,7 +840,7 @@ generic_string Notepad_plus::exts2Filters(const generic_string& exts) const
 	return filters;
 }
 
-int Notepad_plus::setFileOpenSaveDlgFilters(FileDialog & fDlg, int langType)
+int Notepad_plus::setFileOpenSaveDlgFilters(FileDialog & fDlg, bool showAllExt, int langType)
 {
 	NppParameters& nppParam = NppParameters::getInstance();
 	NppGUI & nppGUI = (NppGUI & )nppParam.getNppGUI();
@@ -819,7 +886,7 @@ int Notepad_plus::setFileOpenSaveDlgFilters(FileDialog & fDlg, int langType)
 				list += userList;
 			}
 
-			generic_string stringFilters = exts2Filters(list);
+			generic_string stringFilters = exts2Filters(list, showAllExt ? -1 : 40);
 			const TCHAR *filters = stringFilters.c_str();
 			if (filters[0])
 			{
@@ -899,10 +966,18 @@ bool Notepad_plus::fileCloseAll(bool doDeleteBackup, bool isSnapshotMode)
 	//closes all documents, makes the current view the only one visible
 
 	//first check if we need to save any file
+	//check in the both view
+	std::unordered_set<BufferID> uniqueBuffers;
+
 	for (size_t i = 0; i < _mainDocTab.nbItem() && !noSaveToAll; ++i)
 	{
 		BufferID id = _mainDocTab.getBufferByIndex(i);
 		Buffer * buf = MainFileManager.getBufferByID(id);
+
+		// Put all the BufferID from main vaiew to hash table
+		// hash table is used for fast searching
+		uniqueBuffers.insert(id);
+
 		if (buf->isUntitled() && buf->docLength() == 0)
 		{
 			// Do nothing
@@ -950,7 +1025,8 @@ bool Notepad_plus::fileCloseAll(bool doDeleteBackup, bool isSnapshotMode)
 				}
 				else
 				{
-					res = doSaveOrNot(buf->getFullPathName(), true);
+					size_t nbDirtyFiles = MainFileManager.getNbDirtyBuffers();
+					res = doSaveOrNot(buf->getFullPathName(), nbDirtyFiles > 1);
 				}
 
 				if (res == IDYES)
@@ -981,6 +1057,11 @@ bool Notepad_plus::fileCloseAll(bool doDeleteBackup, bool isSnapshotMode)
 	{
 		BufferID id = _subDocTab.getBufferByIndex(i);
 		Buffer * buf = MainFileManager.getBufferByID(id);
+
+		// Is this buffer already included?
+		if (uniqueBuffers.find(id) != uniqueBuffers.end())
+			continue;
+
 		if (buf->isUntitled() && buf->docLength() == 0)
 		{
 			// Do nothing
@@ -1026,7 +1107,8 @@ bool Notepad_plus::fileCloseAll(bool doDeleteBackup, bool isSnapshotMode)
 				}
 				else
 				{
-					res = doSaveOrNot(buf->getFullPathName(), true);
+					size_t nbDirtyFiles = MainFileManager.getNbDirtyBuffers();
+					res = doSaveOrNot(buf->getFullPathName(), nbDirtyFiles > 1);
 				}
 
 				if (res == IDYES)
@@ -1074,22 +1156,34 @@ bool Notepad_plus::fileCloseAll(bool doDeleteBackup, bool isSnapshotMode)
 	return true;
 }
 
-bool Notepad_plus::fileCloseAllGiven(const std::vector<int> &krvecBufferIndexes)
+bool Notepad_plus::fileCloseAllGiven(const std::vector<int>& krvecBufferIndexes)
 {
 	// First check if we need to save any file.
 
-	std::vector<int>::const_iterator itIndexesEnd = krvecBufferIndexes.end();
 	bool noSaveToAll = false;
 	bool saveToAll = false;
+	std::vector<int> bufferIndexesToClose;
 
-	for (std::vector<int>::const_iterator itIndex = krvecBufferIndexes.begin(); itIndex != itIndexesEnd; ++itIndex)
+	// Count the number of dirty file
+	size_t nbDirtyFiles = 0;
+	for (const auto& index : krvecBufferIndexes)
 	{
-		BufferID id = _pDocTab->getBufferByIndex(*itIndex);
-		Buffer * buf = MainFileManager.getBufferByID(id);
-		
-		if (buf->isUntitled() && buf->docLength() == 0)
+		BufferID id = _pDocTab->getBufferByIndex(index);
+		Buffer* buf = MainFileManager.getBufferByID(id);
+
+		if (buf->isDirty())
+			++nbDirtyFiles;
+	}
+
+	for (const auto& index : krvecBufferIndexes)
+	{
+		BufferID id = _pDocTab->getBufferByIndex(index);
+		Buffer* buf = MainFileManager.getBufferByID(id);
+
+		if ((buf->isUntitled() && buf->docLength() == 0) || noSaveToAll || !buf->isDirty())
 		{
-			// Do nothing.
+			// Do nothing, these documents are already ready to close
+			bufferIndexesToClose.push_back(index);
 		}
 		else if (buf->isDirty() && !noSaveToAll)
 		{
@@ -1105,44 +1199,45 @@ bool Notepad_plus::fileCloseAllGiven(const std::vector<int> &krvecBufferIndexes)
 				switchEditViewTo(SUB_VIEW);
 			}
 
-			int res = -1;
-			if (saveToAll)
-			{
-				res = IDYES;
-			}
-			else
-			{
-				res = doSaveOrNot(buf->getFullPathName(), true);
-			}
+			/* Do you want to save
+			*	IDYES		: Yes
+			*	IDRETRY		: Yes to All
+			*	IDNO		: No
+			*	IDIGNORE	: No To All
+			*	IDCANCEL	: Cancel Opration
+			*/			
 
-			if (res == IDYES)
+			int res = saveToAll ? IDYES : doSaveOrNot(buf->getFullPathName(), nbDirtyFiles > 1);
+
+			if (res == IDYES || res == IDRETRY)
 			{
 				if (!fileSave(id))
-					return false;	// Abort entire procedure.
+					break;	// Abort entire procedure, but close whatever processed so far
+
+				bufferIndexesToClose.push_back(index);
+
+				if (res == IDRETRY)
+					saveToAll = true;
+			}
+			else if (res == IDNO || res == IDIGNORE)
+			{
+				bufferIndexesToClose.push_back(index);
+
+				if (res == IDIGNORE)
+					noSaveToAll = true;
 			}
 			else if (res == IDCANCEL)
 			{
-				return false;
-			}
-			else if (res == IDIGNORE)
-			{
-				noSaveToAll = true;
-			}
-			else if (res == IDRETRY)
-			{
-				if (!fileSave(id))
-					return false;	// Abort entire procedure.
-
-				saveToAll = true;
+				break;
 			}
 		}
 	}
 
 	// Now we close.
 	bool isSnapshotMode = NppParameters::getInstance().getNppGUI().isSnapshotMode();
-	for (std::vector<int>::const_iterator itIndex = krvecBufferIndexes.begin(); itIndex != itIndexesEnd; ++itIndex)
+	for (const auto& index : bufferIndexesToClose)
 	{
-		doClose(_pDocTab->getBufferByIndex(*itIndex), currentView(), isSnapshotMode);
+		doClose(_pDocTab->getBufferByIndex(index), currentView(), isSnapshotMode);
 	}
 
 	return true;
@@ -1175,11 +1270,13 @@ bool Notepad_plus::fileCloseAllToRight()
 
 bool Notepad_plus::fileCloseAllUnchanged()
 {
+	// Indexes must go from high to low to deal with the fact that when one index is closed, any remaining
+	// indexes (smaller than the one just closed) will point to the wrong tab.
 	std::vector<int> vecIndexesToClose;
 
 	for (int i = int(_pDocTab->nbItem()) - 1; i >= 0; i--)
 	{
-		BufferID id = _mainDocTab.getBufferByIndex(i);
+		BufferID id = _pDocTab->getBufferByIndex(i);
 		Buffer* buf = MainFileManager.getBufferByID(id);
 		if ((buf->isUntitled() && buf->docLength() == 0) || !buf->isDirty())
 		{
@@ -1193,10 +1290,13 @@ bool Notepad_plus::fileCloseAllUnchanged()
 bool Notepad_plus::fileCloseAllButCurrent()
 {
 	BufferID current = _pEditView->getCurrentBufferID();
-	int active = _pDocTab->getCurrentTabIndex();
 	const int activeViewID = currentView();
+	int active = _pDocTab->getCurrentTabIndex();
 	bool noSaveToAll = false;
 	bool saveToAll = false;
+	std::vector<unsigned int> mainSaveOpIndex, subSaveOpIndex;
+
+	bool isSnapshotMode = NppParameters::getInstance().getNppGUI().isSnapshotMode();
 
 	//closes all documents, makes the current view the only one visible
 
@@ -1206,6 +1306,7 @@ bool Notepad_plus::fileCloseAllButCurrent()
 		BufferID id = _mainDocTab.getBufferByIndex(i);
 		if (id == current)
 			continue;
+
 		Buffer * buf = MainFileManager.getBufferByID(id);
 		if (buf->isUntitled() && buf->docLength() == 0)
 		{
@@ -1224,17 +1325,26 @@ bool Notepad_plus::fileCloseAllButCurrent()
 			}
 			else
 			{
-				res = doSaveOrNot(buf->getFullPathName(), true);
+				size_t nbDirtyFiles = MainFileManager.getNbDirtyBuffers();
+
+				// if current file is dirty, if should be removed from dirty files to make nbDirtyFiles accurate
+				Buffer* currentBuf = MainFileManager.getBufferByID(current);
+				nbDirtyFiles -= currentBuf->isDirty() ? 1 : 0;
+
+				res = doSaveOrNot(buf->getFullPathName(), nbDirtyFiles > 1);
 			}
 
 			if (res == IDYES)
 			{
-				if (!fileSave(id))
-					return false;	//abort entire procedure
+				bool isSaved = fileSave(id);
+				if (isSaved)
+					mainSaveOpIndex.push_back((unsigned int)i);
+				else
+					res = IDCANCEL;	//about to abort entire procedure
 			}
-			else if (res == IDCANCEL)
+			else if (res == IDNO)
 			{
-				return false;
+				mainSaveOpIndex.push_back((unsigned int)i);
 			}
 			else if (res == IDIGNORE)
 			{
@@ -1247,14 +1357,28 @@ bool Notepad_plus::fileCloseAllButCurrent()
 
 				saveToAll = true;
 			}
+
+
+			if (res == IDCANCEL)
+			{
+				for (int32_t j = static_cast<int32_t>(mainSaveOpIndex.size()) - 1; j >= 0; j--) 	//close all from right to left
+				{
+					doClose(_mainDocTab.getBufferByIndex(mainSaveOpIndex[j]), MAIN_VIEW, isSnapshotMode);
+				}
+
+				return false;
+			}
+
 		}
 	}
+
 	for (size_t i = 0; i < _subDocTab.nbItem() && !noSaveToAll; ++i)
 	{
 		BufferID id = _subDocTab.getBufferByIndex(i);
 		Buffer * buf = MainFileManager.getBufferByID(id);
 		if (id == current)
 			continue;
+
 		if (buf->isUntitled() && buf->docLength() == 0)
 		{
 			// Do nothing
@@ -1271,17 +1395,27 @@ bool Notepad_plus::fileCloseAllButCurrent()
 			}
 			else
 			{
-				res = doSaveOrNot(buf->getFullPathName(), true);
+				size_t nbDirtyFiles = MainFileManager.getNbDirtyBuffers();
+
+				// if current file is dirty, if should be removed from dirty files to make nbDirtyFiles accurate
+				Buffer* currentBuf = MainFileManager.getBufferByID(current);
+				nbDirtyFiles -= currentBuf->isDirty() ? 1 : 0;
+
+				res = doSaveOrNot(buf->getFullPathName(), nbDirtyFiles > 1);
 			}
+
 
 			if (res == IDYES)
 			{
-				if (!fileSave(id))
-					return false;	//abort entire procedure
+				bool isSaved = fileSave(id);
+				if (isSaved)
+					subSaveOpIndex.push_back((unsigned int)i);
+				else
+					res = IDCANCEL;	//about to abort entire procedure
 			}
-			else if (res == IDCANCEL)
+			else if (res == IDNO)
 			{
-				return false;
+				subSaveOpIndex.push_back((unsigned int)i);
 			}
 			else if (res == IDIGNORE)
 			{
@@ -1294,13 +1428,28 @@ bool Notepad_plus::fileCloseAllButCurrent()
 
 				saveToAll = true;
 			}
+
+			
+			if (res == IDCANCEL)
+			{
+				for (int32_t j = static_cast<int32_t>(mainSaveOpIndex.size()) - 1; j >= 0; j--) 	//close all from right to left
+				{
+					doClose(_mainDocTab.getBufferByIndex(mainSaveOpIndex[j]), MAIN_VIEW, isSnapshotMode);
+				}
+
+				for (int32_t j = static_cast<int32_t>(subSaveOpIndex.size()) - 1; j >= 0; j--) 	//close all from right to left
+				{
+					doClose(_subDocTab.getBufferByIndex(subSaveOpIndex[j]), SUB_VIEW, isSnapshotMode);
+				}
+				return false;
+			}
+
 		}
 	}
 
 	// We may have to restore previous view after saving new files
 	switchEditViewTo(activeViewID);
 
-	bool isSnapshotMode = NppParameters::getInstance().getNppGUI().isSnapshotMode();
 	//Then start closing, inactive view first so the active is left open
     if (bothActive())
     {
@@ -1316,8 +1465,20 @@ bool Notepad_plus::fileCloseAllButCurrent()
     }
 
 	const int viewNo = currentView();
+	size_t nbItems = _pDocTab->nbItem();
 	activateBuffer(_pDocTab->getBufferByIndex(0), viewNo);
-	for (int32_t i = static_cast<int32_t>(_pDocTab->nbItem()) - 1; i >= 0; i--)	//close all from right to left
+	
+	// After activateBuffer() call, if file is deleteed, user will decide to keep or not the tab
+	// So here we check if the 1st tab is closed or not
+	size_t newNbItems = _pDocTab->nbItem();
+
+	if (nbItems > newNbItems) // the 1st tab has been removed
+	{
+		// active tab move 1 position forward
+		active -= 1;
+	}
+
+	for (int32_t i = static_cast<int32_t>(newNbItems) - 1; i >= 0; i--)	//close all from right to left
 	{
 		if (i == active)	//dont close active index
 		{
@@ -1398,15 +1559,18 @@ bool Notepad_plus::fileSave(BufferID id)
 				struct tm *today;
 
 				today = localtime(&ltime);
-				generic_strftime(tmpbuf, temBufLen, TEXT("%Y-%m-%d_%H%M%S"), today);
+				if (today)
+				{
+					generic_strftime(tmpbuf, temBufLen, TEXT("%Y-%m-%d_%H%M%S"), today);
 
-				fn_bak += name;
-				fn_bak += TEXT(".");
-				fn_bak += tmpbuf;
-				fn_bak += TEXT(".bak");
+					fn_bak += name;
+					fn_bak += TEXT(".");
+					fn_bak += tmpbuf;
+					fn_bak += TEXT(".bak");
+				}
 			}
 
-			if (not ::CopyFile(fn, fn_bak.c_str(), FALSE))
+			if (!::CopyFile(fn, fn_bak.c_str(), FALSE))
 			{
 				int res = _nativeLangSpeaker.messageBox("FileBackupFailed",
 					_pPublicInterface->getHSelf(),
@@ -1482,10 +1646,10 @@ bool Notepad_plus::fileSaveAs(BufferID id, bool isSaveCopy)
 	FileDialog fDlg(_pPublicInterface->getHSelf(), _pPublicInterface->getHinst());
 
     fDlg.setExtFilter(TEXT("All types"), TEXT(".*"), NULL);
-	int langTypeIndex = setFileOpenSaveDlgFilters(fDlg, buf->getLangType());
+	int langTypeIndex = setFileOpenSaveDlgFilters(fDlg, false, buf->getLangType());
 	fDlg.setDefFileName(buf->getFileName());
 
-    fDlg.setExtIndex(langTypeIndex+1); // +1 for "All types"
+    fDlg.setExtIndex(langTypeIndex + 1); // +1 for "All types"
 
 	// Disable file autodetection before opening save dialog to prevent use-after-delete bug.
 	NppParameters& nppParam = NppParameters::getInstance();
@@ -1514,7 +1678,7 @@ bool Notepad_plus::fileSaveAs(BufferID id, bool isSaveCopy)
 		{
 			_nativeLangSpeaker.messageBox("FileAlreadyOpenedInNpp",
 				_pPublicInterface->getHSelf(),
-				TEXT("The file is already opened in the Notepad++."),
+				TEXT("The file is already opened in Notepad++."),
 				TEXT("ERROR"),
 				MB_OK | MB_ICONSTOP);
 			switchToFile(other);
@@ -1548,7 +1712,7 @@ bool Notepad_plus::fileRename(BufferID id)
 		FileDialog fDlg(_pPublicInterface->getHSelf(), _pPublicInterface->getHinst());
 
 		fDlg.setExtFilter(TEXT("All types"), TEXT(".*"), NULL);
-		setFileOpenSaveDlgFilters(fDlg);
+		setFileOpenSaveDlgFilters(fDlg, false);
 
 		fDlg.setDefFileName(buf->getFileName());
 		TCHAR *pfn = fDlg.doSaveDlg();
@@ -1658,19 +1822,22 @@ void Notepad_plus::fileOpen()
     FileDialog fDlg(_pPublicInterface->getHSelf(), _pPublicInterface->getHinst());
 	fDlg.setExtFilter(TEXT("All types"), TEXT(".*"), NULL);
 
-	setFileOpenSaveDlgFilters(fDlg);
+	setFileOpenSaveDlgFilters(fDlg, true);
 
 	BufferID lastOpened = BUFFER_INVALID;
 	if (stringVector *pfns = fDlg.doOpenMultiFilesDlg())
 	{
 		size_t sz = pfns->size();
-		for (size_t i = 0 ; i < sz ; ++i) {
+		for (size_t i = 0 ; i < sz ; ++i)
+		{
 			BufferID test = doOpen(pfns->at(i).c_str(), fDlg.isReadOnly());
 			if (test != BUFFER_INVALID)
 				lastOpened = test;
 		}
 	}
-	if (lastOpened != BUFFER_INVALID) {
+
+	if (lastOpened != BUFFER_INVALID)
+	{
 		switchToFile(lastOpened);
 	}
 }
@@ -1681,7 +1848,7 @@ void Notepad_plus::fileNew()
     BufferID newBufID = MainFileManager.newEmptyDocument();
 
     loadBufferIntoView(newBufID, currentView(), true);	//true, because we want multiple new files if possible
-    activateBuffer(newBufID, currentView());
+    switchToFile(newBufID);
 }
 
 
@@ -1693,7 +1860,8 @@ bool Notepad_plus::fileReload()
 }
 
 
-bool Notepad_plus::isFileSession(const TCHAR * filename) {
+bool Notepad_plus::isFileSession(const TCHAR * filename)
+{
 	// if file2open matches the ext of user defined session file ext, then it'll be opened as a session
 	const TCHAR *definedSessionExt = NppParameters::getInstance().getNppGUI()._definedSessionExt.c_str();
 	if (*definedSessionExt != '\0')
@@ -1716,7 +1884,8 @@ bool Notepad_plus::isFileSession(const TCHAR * filename) {
 	return false;
 }
 
-bool Notepad_plus::isFileWorkspace(const TCHAR * filename) {
+bool Notepad_plus::isFileWorkspace(const TCHAR * filename)
+{
 	// if filename matches the ext of user defined workspace file ext, then it'll be opened as a workspace
 	const TCHAR *definedWorkspaceExt = NppParameters::getInstance().getNppGUI()._definedWorkspaceExt.c_str();
 	if (*definedWorkspaceExt != '\0')
@@ -1867,7 +2036,8 @@ bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode)
 	{
 		const TCHAR *pFn = session._subViewFiles[k]._fileName.c_str();
 
-		if (isFileSession(pFn) || isFileWorkspace(pFn)) {
+		if (isFileSession(pFn) || isFileWorkspace(pFn))
+		{
 			vector<sessionFileInfo>::iterator posIt = session._subViewFiles.begin() + k;
 			session._subViewFiles.erase(posIt);
 			continue;	//skip session files, not supporting recursive sessions or embedded workspace files
@@ -1887,7 +2057,8 @@ bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode)
 				lastOpened = doOpen(pFn, false, false, session._subViewFiles[k]._encoding);
 
 			//check if already open in main. If so, clone
-			if (_mainDocTab.getIndexByBuffer(lastOpened) != -1) {
+			if (_mainDocTab.getIndexByBuffer(lastOpened) != -1)
+			{
 				loadBufferIntoView(lastOpened, SUB_VIEW);
 			}
 		}
@@ -1974,8 +2145,8 @@ bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode)
 		_isFolding = false;
 	}
 
-	_mainEditView.restoreCurrentPos();
-	_subEditView.restoreCurrentPos();
+	_mainEditView.restoreCurrentPosPreStep();
+	_subEditView.restoreCurrentPosPreStep();
 
 	if (session._activeMainIndex < _mainDocTab.nbItem())//session.nbMainFiles())
 		activateBuffer(_mainDocTab.getBufferByIndex(session._activeMainIndex), MAIN_VIEW);
@@ -2014,6 +2185,7 @@ bool Notepad_plus::fileLoadSession(const TCHAR *fn)
 				sessionExt += TEXT(".");
 			sessionExt += ext;
 			fDlg.setExtFilter(TEXT("Session file"), sessionExt.c_str(), NULL);
+			fDlg.setDefExt(ext);
 		}
 		fDlg.setExtFilter(TEXT("All types"), TEXT(".*"), NULL);
 		sessionFileName = fDlg.doOpenSingleFileDlg();
@@ -2110,6 +2282,7 @@ const TCHAR * Notepad_plus::fileSaveSession(size_t nbFile, TCHAR ** fileNames)
 			sessionExt += TEXT(".");
 		sessionExt += ext;
 		fDlg.setExtFilter(TEXT("Session file"), sessionExt.c_str(), NULL);
+		fDlg.setDefExt(ext);
 		fDlg.setExtIndex(0);		// 0 index for "custom extension types"
 	}
 	fDlg.setExtFilter(TEXT("All types"), TEXT(".*"), NULL);

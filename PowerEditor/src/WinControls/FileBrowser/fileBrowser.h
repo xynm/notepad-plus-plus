@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -28,11 +28,7 @@
 
 #pragma once
 
-//#include <windows.h>
-#ifndef DOCKINGDLGINTERFACE_H
 #include "DockingDlgInterface.h"
-#endif //DOCKINGDLGINTERFACE_H
-
 #include "TreeView.h"
 #include "fileBrowser_rc.h"
 
@@ -117,6 +113,14 @@ private:
 	static DWORD WINAPI watching(void *param);
 };
 
+struct SortingData4lParam {
+	generic_string _rootPath; // Only for the root. It should be empty if it's not root
+	generic_string _label;    // TreeView item label
+	bool _isFolder = false;   // if it's not a folder, then it's a file
+
+	SortingData4lParam(generic_string rootPath, generic_string label, bool isFolder) : _rootPath(rootPath), _label(label), _isFolder(isFolder) {}
+};
+
 class FileBrowser : public DockingDlgInterface {
 public:
 	FileBrowser(): DockingDlgInterface(IDD_FILEBROWSER) {};
@@ -146,10 +150,10 @@ public:
 	void addRootFolder(generic_string);
 
 	HTREEITEM getRootFromFullPath(const generic_string & rootPath) const;
-	HTREEITEM findChildNodeFromName(HTREEITEM parent, const generic_string&);
+	HTREEITEM findChildNodeFromName(HTREEITEM parent, const generic_string&) const;
 
 	bool addInTree(const generic_string& rootPath, const generic_string& addItemFullPath, HTREEITEM node, std::vector<generic_string> linarPathArray);
-	HTREEITEM findInTree(const generic_string& rootPath, HTREEITEM node, std::vector<generic_string> linarPathArray);
+	HTREEITEM findInTree(const generic_string& rootPath, HTREEITEM node, std::vector<generic_string> linarPathArray) const;
 	bool deleteFromTree(const generic_string& rootPath, HTREEITEM node, const std::vector<generic_string>& linarPathArray);
 	void deleteAllFromTree() {
 		popupMenuCmd(IDM_FILEBROWSER_REMOVEALLROOTS);
@@ -160,7 +164,11 @@ public:
 	std::vector<generic_string> getRoots() const;
 	generic_string getSelectedItemPath() const;
 
+	bool selectItemFromPath(const generic_string& itemPath) const;
+
 protected:
+	HWND _hToolbarMenu = nullptr;
+
 	TreeView _treeView;
 	HIMAGELIST _hImaLst = nullptr;
 
@@ -170,16 +178,24 @@ protected:
 	HMENU _hFileMenu = NULL;
 	std::vector<FolderUpdater *> _folderUpdaters;
 
+	generic_string _selectedNodeFullPath; // this member is used only for PostMessage call
+
+	std::vector<SortingData4lParam*> sortingDataArray;
+
 	void initPopupMenus();
 	void destroyMenus();
 	BOOL setImageList(int root_open_id, int root_close_id, int open_node_id, int closed_node_id, int leaf_id);
 
 	BrowserNodeType getNodeType(HTREEITEM hItem);
 	void popupMenuCmd(int cmdID);
+
+	bool selectCurrentEditingFile() const;
+
 	virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
 	void notified(LPNMHDR notification);
 	void showContextMenu(int x, int y);
 	void openSelectFile();
 	void getDirectoryStructure(const TCHAR *dir, const std::vector<generic_string> & patterns, FolderInfo & directoryStructure, bool isRecursive, bool isInHiddenDir); 
 	HTREEITEM createFolderItemsFromDirStruct(HTREEITEM hParentItem, const FolderInfo & directoryStructure);
+	static int CALLBACK categorySortFunc(LPARAM lParam1, LPARAM lParam2, LPARAM lParamSort);
 };

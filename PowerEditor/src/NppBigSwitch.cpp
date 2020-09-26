@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -219,7 +219,8 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case WM_FINDALL_INCURRENTDOC:
 		{
-			return findInCurrentFile();
+			const bool isEntireDoc = wParam == 0;
+			return findInCurrentFile(isEntireDoc);
 		}
 
 		case WM_FINDINFILES:
@@ -251,9 +252,14 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 			bool isFirstTime = not _findReplaceDlg.isCreated();
 			_findReplaceDlg.doDialog(FIND_DLG, _nativeLangSpeaker.isRTL());
+			
+			const NppGUI & nppGui = nppParam.getNppGUI();
+			if (!nppGui._stopFillingFindField)
+			{
+				_pEditView->getGenericSelectedText(str, strSize);
+				_findReplaceDlg.setSearchText(str);
+			}
 
-			_pEditView->getGenericSelectedText(str, strSize);
-			_findReplaceDlg.setSearchText(str);
 			if (isFirstTime)
 				_nativeLangSpeaker.changeFindReplaceDlgLang(_findReplaceDlg);
 			_findReplaceDlg.launchFindInFilesDlg();
@@ -297,7 +303,8 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				return FALSE;
 			BufferID id = (BufferID)wParam;
 			Buffer * b = MainFileManager.getBufferByID(id);
-			if (b && b->getStatus() == DOC_UNNAMED) {
+			if (b && b->getStatus() == DOC_UNNAMED)
+			{
 				b->setFileName(reinterpret_cast<const TCHAR*>(lParam));
 				return TRUE;
 			}
@@ -518,6 +525,9 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				_pDocMap->reloadMap();
 			}
 
+			addHotSpot(_pEditView);
+			addHotSpot(_pNonEditView);
+
 			result = TRUE;
 			break;
 		}
@@ -602,7 +612,8 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 					switchEditViewTo(MAIN_VIEW);
 				else if (hSec == hFocus)
 					switchEditViewTo(SUB_VIEW);
-				else {
+				else
+				{
 					//Other Scintilla, ignore
 				}
 				return TRUE;
@@ -1635,6 +1646,10 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		case WM_ACTIVATE:
 		{
 			_pEditView->getFocus();
+			auto x = _pEditView->execute(SCI_GETXOFFSET);
+			_pEditView->execute(SCI_SETXOFFSET, x);
+			x = _pNonEditView->execute(SCI_GETXOFFSET);
+			_pNonEditView->execute(SCI_SETXOFFSET, x);
 			return TRUE;
 		}
 
@@ -1649,9 +1664,11 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			//reset styler for change in Stylers.xml
 			_mainEditView.defineDocType(_mainEditView.getCurrentBuffer()->getLangType());
 			_mainEditView.performGlobalStyles();
+			addHotSpot(& _mainEditView);
 
 			_subEditView.defineDocType(_subEditView.getCurrentBuffer()->getLangType());
 			_subEditView.performGlobalStyles();
+			addHotSpot(& _subEditView);
 
 			_findReplaceDlg.updateFinderScintilla();
 
@@ -1769,6 +1786,9 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				if (nppgui._rememberLastSession)
 					_lastRecentFileList.setLock(false);	//only lock when the session is remembered
 
+				if (!saveProjectPanelsParams()) allClosed = false; //writeProjectPanelsSettings
+				saveFileBrowserParam();
+
 				if (!allClosed)
 				{
 					//User cancelled the shutdown
@@ -1796,8 +1816,6 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				saveGUIParams(); //writeGUIParams writeScintillaParams
 				saveFindHistory(); //writeFindHistory
 				_lastRecentFileList.saveLRFL(); //writeRecentFileHistorySettings, writeHistory
-				saveProjectPanelsParams(); //writeProjectPanelsSettings
-				saveFileBrowserParam();
 				//
 				// saving config.xml
 				//
@@ -1848,13 +1866,25 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 					updater.run(nppParam.shouldDoUAC());
 				}
 			}
+
+			// _isEndingSessionButNotReady is true means WM_QUERYENDSESSION is sent but no time to finish saving data
+            // then WM_ENDSESSION is sent with wParam == FALSE - Notepad++ should exit in this case
+			if (_isEndingSessionButNotReady) 
+				::DestroyWindow(hwnd);
+
 			return TRUE;
 		}
 
 		case WM_ENDSESSION:
 		{
 			if (wParam == TRUE)
+			{
 				::DestroyWindow(hwnd);
+			}
+			else
+			{
+				_isEndingSessionButNotReady = true;
+			}
 			return 0;
 		}
 
@@ -2318,13 +2348,67 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			break;
 		}
 
-		case NPPM_INTERNAL_SETTING_EDGE_SIZE:
+		case NPPM_INTERNAL_EDGEMULTISETSIZE:
 		{
-			ScintillaViewParams & svp = (ScintillaViewParams &)(NppParameters::getInstance()).getSVP();
-			_mainEditView.execute(SCI_SETEDGECOLUMN, svp._edgeNbColumn);
-			_subEditView.execute(SCI_SETEDGECOLUMN, svp._edgeNbColumn);
-			break;
+			_mainEditView.execute(SCI_MULTIEDGECLEARALL);
+			_subEditView.execute(SCI_MULTIEDGECLEARALL);
+
+			ScintillaViewParams & svp = (ScintillaViewParams &)nppParam.getSVP();
+
+			StyleArray & stylers = NppParameters::getInstance().getMiscStylerArray();
+			COLORREF multiEdgeColor = liteGrey;
+			int i = stylers.getStylerIndexByName(TEXT("Edge colour"));
+			if (i != -1)
+			{
+				Style & style = stylers.getStyler(i);
+				multiEdgeColor = style._fgColor;
+			}
+
+			const size_t twoPower13 = 8192;
+			size_t nbColAdded = 0;
+			for (auto i : svp._edgeMultiColumnPos)
+			{
+				// it's absurd to set columns beyon 8000, even it's a long line.
+				// So let's ignore all the number greater than 2^13
+				if (i > twoPower13)
+					continue;
+
+				_mainEditView.execute(SCI_MULTIEDGEADDLINE, i, multiEdgeColor);
+				_subEditView.execute(SCI_MULTIEDGEADDLINE, i, multiEdgeColor);
+
+				++nbColAdded;
+			}
+
+			int mode;
+			switch (nbColAdded)
+			{
+				case 0:
+				{
+					mode = EDGE_NONE;
+					break;
+				}
+				case 1:
+				{
+					if (svp._isEdgeBgMode)
+					{
+						mode = EDGE_BACKGROUND;
+						_mainEditView.execute(SCI_SETEDGECOLUMN, svp._edgeMultiColumnPos[0]);
+						_subEditView.execute(SCI_SETEDGECOLUMN, svp._edgeMultiColumnPos[0]);
+					}
+					else
+					{
+						mode = EDGE_MULTILINE;
+					}
+					break;
+				}
+				default:
+					mode = EDGE_MULTILINE;
+			}
+
+			_mainEditView.execute(SCI_SETEDGEMODE, mode);
+			_subEditView.execute(SCI_SETEDGEMODE, mode);
 		}
+		break;
 
 		case NPPM_INTERNAL_SETTING_TAB_REPLCESPACE:
 		case NPPM_INTERNAL_SETTING_TAB_SIZE:
@@ -2375,6 +2459,12 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return TRUE;
 		}
 
+		case NPPM_INTERNAL_UPDATECLICKABLELINKS:
+		{
+			addHotSpot(_pEditView);
+			addHotSpot(_pNonEditView);
+		}
+
 		default:
 		{
 			if (message == WDN_NOTIFY)
@@ -2394,7 +2484,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 						//loop through nmdlg->nItems, get index and save it
 						for (unsigned int i = 0; i < nmdlg->nItems; ++i)
 						{
-							fileSave(_pDocTab->getBufferByIndex(i));
+							fileSave(_pDocTab->getBufferByIndex(nmdlg->Items[i]));
 						}
 						nmdlg->processed = TRUE;
 						break;

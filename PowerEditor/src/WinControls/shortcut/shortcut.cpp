@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -26,6 +26,7 @@
 // Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
 
+#include <memory>
 #include <algorithm>
 #include <array>
 #include "shortcut.h"
@@ -167,10 +168,10 @@ generic_string Shortcut::toString() const
 	return sc;
 }
 
-void Shortcut::setName(const TCHAR * name)
+void Shortcut::setName(const TCHAR * menuName, const TCHAR * shortcutName)
 {
-	lstrcpyn(_menuName, name, nameLenMax);
-	lstrcpyn(_name, name, nameLenMax);
+	lstrcpyn(_menuName, menuName, nameLenMax);
+	TCHAR const * name = shortcutName ? shortcutName : menuName;
 	int i = 0, j = 0;
 	while (name[j] != 0 && i < nameLenMax)
 	{
@@ -385,7 +386,7 @@ INT_PTR CALLBACK Shortcut::run_dlgProc(UINT Message, WPARAM wParam, LPARAM)
 	{
 		case WM_INITDIALOG :
 		{
-			::SetDlgItemText(_hSelf, IDC_NAME_EDIT, getMenuName());	//display the menu name, with ampersands
+			::SetDlgItemText(_hSelf, IDC_NAME_EDIT, _canModifyName ? getMenuName() : getName());	//display the menu name, with ampersands, for macros
 			if (!_canModifyName)
 				::SendDlgItemMessage(_hSelf, IDC_NAME_EDIT, EM_SETREADONLY, TRUE, 0);
 			auto textlen = ::SendDlgItemMessage(_hSelf, IDC_NAME_EDIT, WM_GETTEXTLENGTH, 0, 0);
@@ -439,10 +440,13 @@ INT_PTR CALLBACK Shortcut::run_dlgProc(UINT Message, WPARAM wParam, LPARAM)
 					return TRUE;
 
 				case IDOK :
-					if (!isEnabled()) {
+					if (!isEnabled())
+					{
 						_keyCombo._isCtrl = _keyCombo._isAlt = _keyCombo._isShift = false;
 					}
-					if (_canModifyName) {
+
+					if (_canModifyName)
+					{
 						TCHAR editName[nameLenMax];
 						::SendDlgItemMessage(_hSelf, IDC_NAME_EDIT, WM_GETTEXT, nameLenMax, reinterpret_cast<LPARAM>(editName));
 						setName(editName);
@@ -644,8 +648,10 @@ void Accelerator::updateMenuItemByCommand(const CommandShortcut& csc)
 recordedMacroStep::recordedMacroStep(int iMessage, uptr_t wParam, uptr_t lParam, int codepage)
 	: _message(iMessage), _wParameter(wParam), _lParameter(lParam), _macroType(mtUseLParameter)
 { 
-	if (_lParameter) {
-		switch (_message) {
+	if (_lParameter)
+	{
+		switch (_message)
+		{
 			case SCI_SETTEXT :
 			case SCI_REPLACESEL :
 			case SCI_REPLACETARGET :
@@ -805,6 +811,7 @@ bool recordedMacroStep::isMacroable() const
 		case SCI_SCROLLTOSTART:
 		case SCI_SCROLLTOEND:
 		case SCI_SETVIRTUALSPACEOPTIONS:
+		case SCI_SETCARETLINEBACKALPHA:
 		{
 			if (_macroType == mtUseLParameter)
 				return true;
@@ -834,9 +841,10 @@ void recordedMacroStep::PlayBack(Window* pNotepad, ScintillaEditView *pEditView)
 
 		if (_macroType == mtUseSParameter) 
 		{
-			char ansiBuffer[3];
-			::WideCharToMultiByte(static_cast<UINT>(pEditView->execute(SCI_GETCODEPAGE)), 0, _sParameter.c_str(), -1, ansiBuffer, 3, NULL, NULL);
-			auto lParam = reinterpret_cast<LPARAM>(ansiBuffer);
+			int byteBufferLength = ::WideCharToMultiByte(static_cast<UINT>(pEditView->execute(SCI_GETCODEPAGE)), 0, _sParameter.c_str(), -1, NULL, 0, NULL, NULL);
+			auto byteBuffer = std::make_unique< char[] >(byteBufferLength);
+			::WideCharToMultiByte(static_cast<UINT>(pEditView->execute(SCI_GETCODEPAGE)), 0, _sParameter.c_str(), -1, byteBuffer.get(), byteBufferLength, NULL, NULL);
+			auto lParam = reinterpret_cast<LPARAM>(byteBuffer.get());
 			pEditView->execute(_message, _wParameter, lParam);
 		}
 		else
@@ -969,7 +977,8 @@ void ScintillaKeyMap::validateDialog()
 	updateConflictState();
 }
 
-void ScintillaKeyMap::showCurrentSettings() {
+void ScintillaKeyMap::showCurrentSettings()
+{
 	auto keyIndex = ::SendDlgItemMessage(_hSelf, IDC_LIST_KEYS, LB_GETCURSEL, 0, 0);
 	_keyCombo = _keyCombos[keyIndex];
 	::SendDlgItemMessage(_hSelf, IDC_CTRL_CHECK,	BM_SETCHECK, _keyCombo._isCtrl?BST_CHECKED:BST_UNCHECKED, 0);
@@ -985,7 +994,8 @@ void ScintillaKeyMap::showCurrentSettings() {
 	}
 }
 
-void ScintillaKeyMap::updateListItem(int index) {
+void ScintillaKeyMap::updateListItem(int index)
+{
 	::SendDlgItemMessage(_hSelf, IDC_LIST_KEYS, LB_INSERTSTRING, index, reinterpret_cast<LPARAM>(toString(index).c_str()));
 	::SendDlgItemMessage(_hSelf, IDC_LIST_KEYS, LB_DELETESTRING, index+1, 0);
 }
@@ -1127,7 +1137,9 @@ INT_PTR CALLBACK ScintillaKeyMap::run_dlgProc(UINT Message, WPARAM wParam, LPARA
 	//return FALSE;
 }
 
-CommandShortcut::CommandShortcut(const Shortcut& sc, long id) :	Shortcut(sc), _id(id) {
+CommandShortcut::CommandShortcut(const Shortcut& sc, long id) :	Shortcut(sc), _id(id)
+{
+	_shortcutName = sc.getName();
 	if ( _id < IDM_EDIT)
 		_category = TEXT("File");
 	else if ( _id < IDM_SEARCH)

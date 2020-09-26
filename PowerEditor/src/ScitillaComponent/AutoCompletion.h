@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -52,7 +52,7 @@ public:
 
 private:
 	std::vector<MatchedCharInserted> _insertedMatchedChars;
-	ScintillaEditView * _pEditView = nullptr;;
+	ScintillaEditView * _pEditView = nullptr;
 };
 
 class AutoCompletion {
@@ -102,5 +102,5 @@ private:
 	FunctionCallTip _funcCalltip;
 
 	const TCHAR * getApiFileName();
-	void getWordArray(std::vector<generic_string> & wordArray, TCHAR *beginChars);
+	void getWordArray(std::vector<generic_string> & wordArray, TCHAR *beginChars, TCHAR *excludeChars);
 };

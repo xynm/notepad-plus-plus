@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2003 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -35,8 +35,7 @@
 
 FileDialog *FileDialog::staticThis = NULL;
 
-FileDialog::FileDialog(HWND hwnd, HINSTANCE hInst) 
-	: _nbCharFileExt(0), _nbExt(0), _fileExt(NULL), _extTypeIndex(-1)
+FileDialog::FileDialog(HWND hwnd, HINSTANCE hInst)
 {
 	staticThis = this;
     
@@ -164,6 +163,7 @@ TCHAR* FileDialog::doOpenSingleFileDlg()
 	::GetCurrentDirectory(MAX_PATH, dir);
 	NppParameters& params = NppParameters::getInstance();
 	_ofn.lpstrInitialDir = params.getWorkingDir();
+	_ofn.lpstrDefExt = _defExt.c_str();
 
 	_ofn.Flags |= OFN_FILEMUSTEXIST;
 
@@ -267,6 +267,9 @@ TCHAR * FileDialog::doSaveDlg()
 
 	NppParameters& params = NppParameters::getInstance();
 	_ofn.lpstrInitialDir = params.getWorkingDir();
+	_ofn.lpstrDefExt = _defExt.c_str();
+	if (_extTypeIndex != -1)
+		_ofn.nFilterIndex = _extTypeIndex + 1; // +1 for the file extension combobox index starts from 1
 
 	_ofn.Flags |= OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY | OFN_ENABLESIZING;
 
@@ -348,7 +351,9 @@ static LRESULT CALLBACK fileDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 };
 
 
-static TCHAR * get1stExt(TCHAR *ext) { // precondition : ext should be under the format : Batch (*.bat;*.cmd;*.nt)
+static TCHAR * get1stExt(TCHAR *ext)
+{
+	// precondition : ext should be under the format : Batch (*.bat;*.cmd;*.nt)
 	TCHAR *begin = ext;
 	for ( ; *begin != '.' ; begin++);
 	TCHAR *end = ++begin;
@@ -359,7 +364,8 @@ static TCHAR * get1stExt(TCHAR *ext) { // precondition : ext should be under the
 	return begin;
 };
 
-static generic_string addExt(HWND textCtrl, HWND typeCtrl) {
+static generic_string addExt(HWND textCtrl, HWND typeCtrl)
+{
 	TCHAR fn[MAX_PATH];
 	::GetWindowText(textCtrl, fn, MAX_PATH);
 	

@@ -1,5 +1,5 @@
 // This file is part of Notepad++ project
-// Copyright (C)2017 Don HO <don.h@free.fr>
+// Copyright (C)2020 Don HO <don.h@free.fr>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -39,7 +39,7 @@
 #include "localization.h"
 #include "Processus.h"
 #include "PluginsManager.h"
-#include "verifySignedFile.h"
+#include "verifySignedfile.h"
 
 #define TEXTFILE        256
 #define IDR_PLUGINLISTJSONFILE  101
@@ -280,7 +280,7 @@ void PluginsAdminDlg::create(int dialogID, bool isRTL, bool msgDestParent)
 	_tab.insertAtEnd(updates);
 	_tab.insertAtEnd(installed);
 
-	rect.bottom -= 100;;
+	rect.bottom -= 100;
 	_tab.reSizeTo(rect);
 	_tab.display();
 

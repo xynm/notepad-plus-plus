@@ -1,29 +1,18 @@
 // This file is part of Notepad++ project
-// Copyright (C)2020 Don HO <don.h@free.fr>
-//
-// This program is free software; you can redistribute it and/or
-// modify it under the terms of the GNU General Public License
-// as published by the Free Software Foundation; either
-// version 2 of the License, or (at your option) any later version.
-//
-// Note that the GPL places important restrictions on "derived works", yet
-// it does not provide a detailed definition of that term.  To avoid
-// misunderstandings, we consider an application to constitute a
-// "derivative work" for the purpose of this license if it does any of the
-// following:
-// 1. Integrates source code from Notepad++.
-// 2. Integrates/includes/aggregates Notepad++ into a proprietary executable
-//    installer, such as those produced by InstallShield.
-// 3. Links to a library or executes a program that does any of the above.
+// Copyright (C)2021 Don HO <don.h@free.fr>
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// at your option any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "json.hpp"
 #include <algorithm>
@@ -79,7 +68,7 @@ Version::Version(const generic_string& versionStr)
 
 void Version::setVersionFrom(const generic_string& filePath)
 {
-	if (not filePath.empty() && ::PathFileExists(filePath.c_str()))
+	if (!filePath.empty() && ::PathFileExists(filePath.c_str()))
 	{
 		DWORD handle = 0;
 		DWORD bufferSize = ::GetFileVersionInfoSize(filePath.c_str(), &handle);
@@ -180,20 +169,20 @@ generic_string PluginUpdateInfo::describe()
 {
 	generic_string desc;
 	const TCHAR *EOL = TEXT("\r\n");
-	if (not _description.empty())
+	if (!_description.empty())
 	{
 		desc = _description;
 		desc += EOL;
 	}
 
-	if (not _author.empty())
+	if (!_author.empty())
 	{
 		desc += TEXT("Author: ");
 		desc += _author;
 		desc += EOL;
 	}
 
-	if (not _homepage.empty())
+	if (!_homepage.empty())
 	{
 		desc += TEXT("Homepage: ");
 		desc += _homepage;
@@ -656,10 +645,10 @@ bool loadFromJson(PluginViewList & pl, const json& j)
 			pi->_displayName = wmc.char2wchar(valStr.c_str(), CP_ACP);
 
 			valStr = i.at("author").get<std::string>();
-			pi->_author = wmc.char2wchar(valStr.c_str(), CP_ACP);
+			pi->_author = wmc.char2wchar(valStr.c_str(), CP_UTF8);
 
 			valStr = i.at("description").get<std::string>();
-			pi->_description = wmc.char2wchar(valStr.c_str(), CP_ACP);
+			pi->_description = wmc.char2wchar(valStr.c_str(), CP_UTF8);
 
 			valStr = i.at("id").get<std::string>();
 			pi->_id = wmc.char2wchar(valStr.c_str(), CP_ACP);

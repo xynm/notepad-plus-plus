@@ -1,33 +1,23 @@
 // This file is part of Notepad++ project
-// Copyright (C)2020 Don HO <don.h@free.fr>
-//
-// This program is free software; you can redistribute it and/or
-// modify it under the terms of the GNU General Public License
-// as published by the Free Software Foundation; either
-// version 2 of the License, or (at your option) any later version.
-//
-// Note that the GPL places important restrictions on "derived works", yet
-// it does not provide a detailed definition of that term.  To avoid
-// misunderstandings, we consider an application to constitute a
-// "derivative work" for the purpose of this license if it does any of the
-// following:
-// 1. Integrates source code from Notepad++.
-// 2. Integrates/includes/aggregates Notepad++ into a proprietary executable
-//    installer, such as those produced by InstallShield.
-// 3. Links to a library or executes a program that does any of the above.
+// Copyright (C)2021 Don HO <don.h@free.fr>
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// at your option any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <iostream>
 #include <stdexcept>
 #include <windows.h>
 #include "Splitter.h"
+#include "NppDarkMode.h"
 
 bool Splitter::_isHorizontalRegistered = false;
 bool Splitter::_isVerticalRegistered = false;
@@ -292,7 +282,7 @@ LRESULT CALLBACK Splitter::spliterWndProc(UINT uMsg, WPARAM wParam, LPARAM lPara
 			if (isInLeftTopZone(p) || isInRightBottomZone(p))
 			{
 				//::SetCursor(::LoadCursor(_hInst, MAKEINTRESOURCE(IDC_UP_ARROW)));
-				::SetCursor(::LoadCursor(NULL, IDC_ARROW));
+				::SetCursor(::LoadCursor(NULL, IDC_HAND));
 				return TRUE;
 			}
 
@@ -396,6 +386,21 @@ LRESULT CALLBACK Splitter::spliterWndProc(UINT uMsg, WPARAM wParam, LPARAM lPara
 				_isDraged = false;
 			}
 			return 0;
+		}
+
+		case WM_ERASEBKGND:
+		{
+			if (!NppDarkMode::isEnabled())
+			{
+				break;
+			}
+
+			RECT rc = { 0 };
+			getClientRect(rc);
+
+			FillRect((HDC)wParam, &rc, NppDarkMode::getSofterBackgroundBrush());
+			
+			return 1;
 		}
 
 		case WM_PAINT:
@@ -515,6 +520,16 @@ void Splitter::drawSplitter()
 	HDC hdc = ::BeginPaint(_hSelf, &ps);
 	getClientRect(rc);
 
+	bool isDarkMode = NppDarkMode::isEnabled();
+
+	HPEN holdPen = nullptr;
+	if (isDarkMode)
+	{
+		static HPEN g_hpen = CreatePen(PS_SOLID, 1, NppDarkMode::getDarkerTextColor());
+		holdPen = (HPEN)SelectObject(hdc, g_hpen);
+		FillRect(hdc, &rc, NppDarkMode::getSofterBackgroundBrush());
+	}
+
 	if ((_splitterSize >= 4) && (_dwFlags & SV_RESIZEWTHPERCNT))
 	{
 		adjustZoneToDraw(TLrc, ZONE_TYPE::topLeft);
@@ -545,7 +560,7 @@ void Splitter::drawSplitter()
 	else
 		bottom = rc.bottom;
 
-	while (rcToDraw1.bottom <= bottom)
+	while (!isDarkMode && rcToDraw1.bottom <= bottom)
 	{
 		if (isVertical())
 		{
@@ -583,6 +598,11 @@ void Splitter::drawSplitter()
 
 	if ((_splitterSize >= 4) && (_dwFlags & SV_RESIZEWTHPERCNT))
 		paintArrow(hdc, BRrc, isVertical() ? Arrow::right : Arrow::down);
+
+	if (isDarkMode)
+	{
+		SelectObject(hdc, holdPen);
+	}
 
 	::EndPaint(_hSelf, &ps);
 }

@@ -1,41 +1,31 @@
 // This file is part of Notepad++ project
-// Copyright (C)2020 Don HO <don.h@free.fr>
-//
-// This program is free software; you can redistribute it and/or
-// modify it under the terms of the GNU General Public License
-// as published by the Free Software Foundation; either
-// version 2 of the License, or (at your option) any later version.
-//
-// Note that the GPL places important restrictions on "derived works", yet
-// it does not provide a detailed definition of that term.  To avoid
-// misunderstandings, we consider an application to constitute a
-// "derivative work" for the purpose of this license if it does any of the
-// following:
-// 1. Integrates source code from Notepad++.
-// 2. Integrates/includes/aggregates Notepad++ into a proprietary executable
-//    installer, such as those produced by InstallShield.
-// 3. Links to a library or executes a program that does any of the above.
+// Copyright (C)2021 Don HO <don.h@free.fr>
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// at your option any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
 #include <time.h>
 #include <shlwapi.h>
 #include <shlobj.h>
 #include "Notepad_plus_Window.h"
-#include "FileDialog.h"
+#include "CustomFileDialog.h"
 #include "EncodingMapper.h"
 #include "VerticalFileSwitcher.h"
 #include "functionListPanel.h"
 #include "ReadDirectoryChanges.h"
 #include "ReadFileChanges.h"
+#include "fileBrowser.h"
 #include <tchar.h>
 #include <unordered_set>
 
@@ -561,8 +551,7 @@ bool Notepad_plus::doSave(BufferID id, const TCHAR * filename, bool isCopy)
 		_pluginsManager.notify(&scnN);
 	}
 
-	generic_string error_msg;
-	bool res = MainFileManager.saveBuffer(id, filename, isCopy, &error_msg);
+	SavingStatus res = MainFileManager.saveBuffer(id, filename, isCopy);
 
 	if (!isCopy)
 	{
@@ -570,7 +559,15 @@ bool Notepad_plus::doSave(BufferID id, const TCHAR * filename, bool isCopy)
 		_pluginsManager.notify(&scnN);
 	}
 
-	if (!res)
+	if (res == SavingStatus::SaveWrittingFailed)
+	{
+		_nativeLangSpeaker.messageBox("NotEnoughRoom4Saving",
+			_pPublicInterface->getHSelf(),
+			TEXT("Failed to save file.\nIt seems there's not enough space on disk to save file."),
+			TEXT("Save failed"),
+			MB_OK);
+	}
+	else if (res == SavingStatus::SaveOpenFailed)
 	{
 		// try to open Notepad++ in admin mode
 		if (!_isAdministrator)
@@ -580,7 +577,7 @@ bool Notepad_plus::doSave(BufferID id, const TCHAR * filename, bool isCopy)
 			{                   // Open the 2nd Notepad++ instance in Admin mode, then close the 1st instance.
 				int openInAdminModeRes = _nativeLangSpeaker.messageBox("OpenInAdminMode",
 				_pPublicInterface->getHSelf(),
-				TEXT("The file cannot be saved and it may be protected.\rDo you want to launch Notepad++ in Administrator mode?"),
+				TEXT("This file cannot be saved and it may be protected.\rDo you want to launch Notepad++ in Administrator mode?"),
 				TEXT("Save failed"),
 				MB_YESNO);
 
@@ -652,29 +649,14 @@ bool Notepad_plus::doSave(BufferID id, const TCHAR * filename, bool isCopy)
 			}
 
 		}
-		else
-		{
-
-			if (error_msg.empty())
-			{
-				_nativeLangSpeaker.messageBox("FileLockedWarning",
-					_pPublicInterface->getHSelf(),
-					TEXT("Please check if this file is opened in another program."),
-					TEXT("Save failed"),
-					MB_OK);
-			}
-			else
-			{
-				::MessageBox(_pPublicInterface->getHSelf(), error_msg.c_str(), TEXT("Save failed"), MB_OK);
-			}
-		}
 	}
 
-	if (res && _pFuncList && (!_pFuncList->isClosed()) && _pFuncList->isVisible())
+	if (res == SavingStatus::SaveOK && _pFuncList && (!_pFuncList->isClosed()) && _pFuncList->isVisible())
 	{
 		_pFuncList->reload();
 	}
-	return res;
+
+	return res == SavingStatus::SaveOK;
 }
 
 void Notepad_plus::doClose(BufferID id, int whichOne, bool doDeleteBackup)
@@ -746,6 +728,8 @@ void Notepad_plus::doClose(BufferID id, int whichOne, bool doDeleteBackup)
 		// if the current activated buffer is in this view,
 		// then get buffer ID to remove the entry from File Switcher Pannel
 		hiddenBufferID = reinterpret_cast<BufferID>(::SendMessage(_pPublicInterface->getHSelf(), NPPM_GETBUFFERIDFROMPOS, 0, whichOne));
+		if (!isBufRemoved && hiddenBufferID != BUFFER_INVALID && _pFileSwitcherPanel)
+			_pFileSwitcherPanel->closeItem(hiddenBufferID, whichOne);
 	}
 
 	// Notify plugins that current file is closed
@@ -840,7 +824,7 @@ generic_string Notepad_plus::exts2Filters(const generic_string& exts, int maxExt
 	return filters;
 }
 
-int Notepad_plus::setFileOpenSaveDlgFilters(FileDialog & fDlg, bool showAllExt, int langType)
+int Notepad_plus::setFileOpenSaveDlgFilters(CustomFileDialog & fDlg, bool showAllExt, int langType)
 {
 	NppParameters& nppParam = NppParameters::getInstance();
 	NppGUI & nppGUI = (NppGUI & )nppParam.getNppGUI();
@@ -890,7 +874,7 @@ int Notepad_plus::setFileOpenSaveDlgFilters(FileDialog & fDlg, bool showAllExt, 
 			const TCHAR *filters = stringFilters.c_str();
 			if (filters[0])
 			{
-				fDlg.setExtsFilter(getLangDesc(lid, false).c_str(), filters);
+				fDlg.setExtFilter(getLangDesc(lid, false).c_str(), filters);
 
                 //
                 // Get index of lang type to find
@@ -1512,7 +1496,7 @@ bool Notepad_plus::fileSave(BufferID id)
 			TCHAR *name = ::PathFindFileName(fn);
 			generic_string fn_bak;
 
-			if (nppgui._useDir && not nppgui._backupDir.empty())
+			if (nppgui._useDir && !nppgui._backupDir.empty())
 			{
 				// Get the custom directory, make sure it has a trailing slash
 				fn_bak = nppgui._backupDir;
@@ -1570,7 +1554,8 @@ bool Notepad_plus::fileSave(BufferID id)
 				}
 			}
 
-			if (!::CopyFile(fn, fn_bak.c_str(), FALSE))
+			BOOL doCancel = FALSE;
+			if (!::CopyFileEx(fn, fn_bak.c_str(), nullptr, nullptr, &doCancel, COPY_FILE_NO_BUFFERING))
 			{
 				int res = _nativeLangSpeaker.messageBox("FileBackupFailed",
 					_pPublicInterface->getHSelf(),
@@ -1643,35 +1628,54 @@ bool Notepad_plus::fileSaveAs(BufferID id, bool isSaveCopy)
 		bufferID = _pEditView->getCurrentBufferID();
 	Buffer * buf = MainFileManager.getBufferByID(bufferID);
 
-	FileDialog fDlg(_pPublicInterface->getHSelf(), _pPublicInterface->getHinst());
+	generic_string origPathname = buf->getFullPathName();
+	bool wasUntitled = buf->isUntitled();
 
-    fDlg.setExtFilter(TEXT("All types"), TEXT(".*"), NULL);
-	int langTypeIndex = setFileOpenSaveDlgFilters(fDlg, false, buf->getLangType());
+	CustomFileDialog fDlg(_pPublicInterface->getHSelf());
+
+	fDlg.setExtFilter(TEXT("All types"), TEXT(".*"));
+
+	LangType langType = buf->getLangType();
+
+	const bool defaultAllTypes = NppParameters::getInstance().getNppGUI()._setSaveDlgExtFiltToAllTypes;
+	const int langTypeIndex = setFileOpenSaveDlgFilters(fDlg, false, langType);
+	
 	fDlg.setDefFileName(buf->getFileName());
 
-    fDlg.setExtIndex(langTypeIndex + 1); // +1 for "All types"
+	fDlg.setExtIndex(langTypeIndex + 1); // +1 for "All types"
+
+	const generic_string checkboxLabel = _nativeLangSpeaker.getLocalizedStrFromID("file-save-assign-type",
+		TEXT("&Append extension"));
+	fDlg.enableFileTypeCheckbox(checkboxLabel, !defaultAllTypes);
 
 	// Disable file autodetection before opening save dialog to prevent use-after-delete bug.
 	NppParameters& nppParam = NppParameters::getInstance();
 	auto cdBefore = nppParam.getNppGUI()._fileAutoDetection;
-	(const_cast<NppGUI &>(nppParam.getNppGUI()))._fileAutoDetection = cdDisabled;
+	(nppParam.getNppGUI())._fileAutoDetection = cdDisabled;
 
-	TCHAR *pfn = fDlg.doSaveDlg();
+	generic_string fn = fDlg.doSaveDlg();
+
+	// Remember the selected state
+	(nppParam.getNppGUI())._setSaveDlgExtFiltToAllTypes = !fDlg.getFileTypeCheckboxValue();
 
 	// Enable file autodetection again.
-	(const_cast<NppGUI &>(nppParam.getNppGUI()))._fileAutoDetection = cdBefore;
+	(nppParam.getNppGUI())._fileAutoDetection = cdBefore;
 
-	if (pfn)
+	if (!fn.empty())
 	{
-		BufferID other = _pDocTab->findBufferByName(pfn);
+		BufferID other = _pDocTab->findBufferByName(fn.c_str());
 		if (other == BUFFER_INVALID)
-			other = _pNonDocTab->findBufferByName(pfn);
+			other = _pNonDocTab->findBufferByName(fn.c_str());
 
 		if (other == BUFFER_INVALID)	//can save, as both (same and other) view don't contain buffer
 		{
-			bool res = doSave(bufferID, pfn, isSaveCopy);
+			bool res = doSave(bufferID, fn.c_str(), isSaveCopy);
 			//buf->setNeedsLexing(true);	//commented to fix wrapping being removed after save as (due to SCI_CLEARSTYLE or something, seems to be Scintilla bug)
 			//Changing lexer after save seems to work properly
+			if (!wasUntitled && !isSaveCopy)
+			{
+				_lastRecentFileList.add(origPathname.c_str());
+			}
 			return res;
 		}
 		else		//cannot save, other view has buffer already open, activate it
@@ -1686,10 +1690,10 @@ bool Notepad_plus::fileSaveAs(BufferID id, bool isSaveCopy)
 		}
 	}
 	else // cancel button is pressed
-    {
-        checkModifiedDocument(true);
+	{
+		checkModifiedDocument(true);
 		return false;
-    }
+	}
 }
 
 bool Notepad_plus::fileRename(BufferID id)
@@ -1709,16 +1713,16 @@ bool Notepad_plus::fileRename(BufferID id)
 	bool isFileExisting = PathFileExists(buf->getFullPathName()) != FALSE;
 	if (isFileExisting)
 	{
-		FileDialog fDlg(_pPublicInterface->getHSelf(), _pPublicInterface->getHinst());
+		CustomFileDialog fDlg(_pPublicInterface->getHSelf());
 
-		fDlg.setExtFilter(TEXT("All types"), TEXT(".*"), NULL);
+		fDlg.setExtFilter(TEXT("All types"), TEXT(".*"));
 		setFileOpenSaveDlgFilters(fDlg, false);
 
 		fDlg.setDefFileName(buf->getFileName());
-		TCHAR *pfn = fDlg.doSaveDlg();
+		generic_string fn = fDlg.doSaveDlg();
 
-		if (pfn)
-			success = MainFileManager.moveFile(bufferID, pfn);
+		if (!fn.empty())
+			success = MainFileManager.moveFile(bufferID, fn.c_str());
 	}
 	else
 	{
@@ -1738,23 +1742,40 @@ bool Notepad_plus::fileRename(BufferID id)
 		TCHAR *tabNewName = reinterpret_cast<TCHAR *>(strDlg.doDialog());
 		if (tabNewName)
 		{
-			success = true;
-			buf->setFileName(tabNewName);
-			bool isSnapshotMode = NppParameters::getInstance().getNppGUI().isSnapshotMode();
-			if (isSnapshotMode)
+			BufferID sameNamedBufferId = _pDocTab->findBufferByName(tabNewName);
+			if (sameNamedBufferId == BUFFER_INVALID)
 			{
-				generic_string oldBackUpFile = buf->getBackupFileName();
+				sameNamedBufferId = _pNonDocTab->findBufferByName(tabNewName);
+			}
+			
+			if (sameNamedBufferId != BUFFER_INVALID)
+			{
+				_nativeLangSpeaker.messageBox("RenameTabTemporaryNameAlreadyInUse",
+					_pPublicInterface->getHSelf(),
+					TEXT("The specified name is already in use on another tab."),
+					TEXT("Rename failed"),
+					MB_OK | MB_ICONSTOP);
+			}
+			else
+			{
+				success = true;
+				buf->setFileName(tabNewName);
+				bool isSnapshotMode = NppParameters::getInstance().getNppGUI().isSnapshotMode();
+				if (isSnapshotMode)
+				{
+					generic_string oldBackUpFile = buf->getBackupFileName();
 
-				// Change the backup file name and let MainFileManager decide the new filename
-				buf->setBackupFileName(TEXT(""));
+					// Change the backup file name and let MainFileManager decide the new filename
+					buf->setBackupFileName(TEXT(""));
 
-				// Create new backup
-				buf->setModifiedStatus(true);
-				bool bRes = MainFileManager.backupCurrentBuffer();
+					// Create new backup
+					buf->setModifiedStatus(true);
+					bool bRes = MainFileManager.backupCurrentBuffer();
 
-				// Delete old backup
-				if (bRes)
-					::DeleteFile(oldBackUpFile.c_str());
+					// Delete old backup
+					if (bRes)
+						::DeleteFile(oldBackUpFile.c_str());
+				}
 			}
 		}
 	}
@@ -1819,21 +1840,19 @@ bool Notepad_plus::fileDelete(BufferID id)
 
 void Notepad_plus::fileOpen()
 {
-    FileDialog fDlg(_pPublicInterface->getHSelf(), _pPublicInterface->getHinst());
-	fDlg.setExtFilter(TEXT("All types"), TEXT(".*"), NULL);
+	CustomFileDialog fDlg(_pPublicInterface->getHSelf());
+	fDlg.setExtFilter(TEXT("All types"), TEXT(".*"));
 
 	setFileOpenSaveDlgFilters(fDlg, true);
 
 	BufferID lastOpened = BUFFER_INVALID;
-	if (stringVector *pfns = fDlg.doOpenMultiFilesDlg())
+	const auto& fns = fDlg.doOpenMultiFilesDlg();
+	size_t sz = fns.size();
+	for (size_t i = 0 ; i < sz ; ++i)
 	{
-		size_t sz = pfns->size();
-		for (size_t i = 0 ; i < sz ; ++i)
-		{
-			BufferID test = doOpen(pfns->at(i).c_str(), fDlg.isReadOnly());
-			if (test != BUFFER_INVALID)
-				lastOpened = test;
-		}
+		BufferID test = doOpen(fns.at(i).c_str(), fDlg.isReadOnly());
+		if (test != BUFFER_INVALID)
+			lastOpened = test;
 	}
 
 	if (lastOpened != BUFFER_INVALID)
@@ -1919,7 +1938,7 @@ void Notepad_plus::loadLastSession()
 	_isFolding = false;
 }
 
-bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode)
+bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode, bool shouldLoadFileBrowser)
 {
 	NppParameters& nppParam = NppParameters::getInstance();
 	bool allSessionFilesLoaded = true;
@@ -2167,16 +2186,22 @@ bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode)
 	if (_pFileSwitcherPanel)
 		_pFileSwitcherPanel->reload();
 
+	if (shouldLoadFileBrowser && !session._fileBrowserRoots.empty())
+	{
+		// Force launch file browser and add roots
+		launchFileBrowser(session._fileBrowserRoots, session._fileBrowserSelectedItem, true);
+	}
+
 	return allSessionFilesLoaded;
 }
 
 bool Notepad_plus::fileLoadSession(const TCHAR *fn)
 {
 	bool result = false;
-	const TCHAR *sessionFileName = NULL;
+	generic_string sessionFileName;
 	if (fn == NULL)
 	{
-		FileDialog fDlg(_pPublicInterface->getHSelf(), _pPublicInterface->getHinst());
+		CustomFileDialog fDlg(_pPublicInterface->getHSelf());
 		const TCHAR *ext = NppParameters::getInstance().getNppGUI()._definedSessionExt.c_str();
 		generic_string sessionExt = TEXT("");
 		if (*ext != '\0')
@@ -2184,10 +2209,10 @@ bool Notepad_plus::fileLoadSession(const TCHAR *fn)
 			if (*ext != '.')
 				sessionExt += TEXT(".");
 			sessionExt += ext;
-			fDlg.setExtFilter(TEXT("Session file"), sessionExt.c_str(), NULL);
+			fDlg.setExtFilter(TEXT("Session file"), sessionExt.c_str());
 			fDlg.setDefExt(ext);
 		}
-		fDlg.setExtFilter(TEXT("All types"), TEXT(".*"), NULL);
+		fDlg.setExtFilter(TEXT("All types"), TEXT(".*"));
 		sessionFileName = fDlg.doOpenSingleFileDlg();
 	}
 	else
@@ -2199,7 +2224,7 @@ bool Notepad_plus::fileLoadSession(const TCHAR *fn)
 
 	NppParameters& nppParam = NppParameters::getInstance();
 	const NppGUI & nppGUI = nppParam.getNppGUI();
-	if (sessionFileName)
+	if (!sessionFileName.empty())
 	{
 		bool isEmptyNpp = false;
 		if (_mainDocTab.nbItem() == 1 && _subDocTab.nbItem() == 1)
@@ -2226,13 +2251,15 @@ bool Notepad_plus::fileLoadSession(const TCHAR *fn)
 			bool isAllSuccessful = true;
 			Session session2Load;
 
-			if ((NppParameters::getInstance()).loadSession(session2Load, sessionFileName))
+			if ((NppParameters::getInstance()).loadSession(session2Load, sessionFileName.c_str()))
 			{
-				isAllSuccessful = loadSession(session2Load);
+				const bool isSnapshotMode = false;
+				const bool shouldLoadFileBrowser = true;
+				isAllSuccessful = loadSession(session2Load, isSnapshotMode, shouldLoadFileBrowser);
 				result = true;
 			}
 			if (!isAllSuccessful)
-				(NppParameters::getInstance()).writeSession(session2Load, sessionFileName);
+				(NppParameters::getInstance()).writeSession(session2Load, sessionFileName.c_str());
 		}
 		if (result == false)
 		{
@@ -2246,7 +2273,7 @@ bool Notepad_plus::fileLoadSession(const TCHAR *fn)
 	return result;
 }
 
-const TCHAR * Notepad_plus::fileSaveSession(size_t nbFile, TCHAR ** fileNames, const TCHAR *sessionFile2save)
+const TCHAR * Notepad_plus::fileSaveSession(size_t nbFile, TCHAR ** fileNames, const TCHAR *sessionFile2save, bool includeFileBrowser)
 {
 	if (sessionFile2save)
 	{
@@ -2262,6 +2289,16 @@ const TCHAR * Notepad_plus::fileSaveSession(size_t nbFile, TCHAR ** fileNames, c
 		else
 			getCurrentOpenedFiles(currentSession);
 
+		currentSession._includeFileBrowser = includeFileBrowser;
+		if (includeFileBrowser && _pFileBrowser && !_pFileBrowser->isClosed())
+		{
+			currentSession._fileBrowserSelectedItem = _pFileBrowser->getSelectedItemPath();
+			for (auto&& rootFileName : _pFileBrowser->getRoots())
+			{
+				currentSession._fileBrowserRoots.push_back({ rootFileName });
+			}
+		}
+
 		(NppParameters::getInstance()).writeSession(currentSession, sessionFile2save);
 		return sessionFile2save;
 	}
@@ -2270,9 +2307,7 @@ const TCHAR * Notepad_plus::fileSaveSession(size_t nbFile, TCHAR ** fileNames, c
 
 const TCHAR * Notepad_plus::fileSaveSession(size_t nbFile, TCHAR ** fileNames)
 {
-	const TCHAR *sessionFileName = NULL;
-
-	FileDialog fDlg(_pPublicInterface->getHSelf(), _pPublicInterface->getHinst());
+	CustomFileDialog fDlg(_pPublicInterface->getHSelf());
 	const TCHAR *ext = NppParameters::getInstance().getNppGUI()._definedSessionExt.c_str();
 
 	generic_string sessionExt = TEXT("");
@@ -2281,14 +2316,18 @@ const TCHAR * Notepad_plus::fileSaveSession(size_t nbFile, TCHAR ** fileNames)
 		if (*ext != '.')
 			sessionExt += TEXT(".");
 		sessionExt += ext;
-		fDlg.setExtFilter(TEXT("Session file"), sessionExt.c_str(), NULL);
+		fDlg.setExtFilter(TEXT("Session file"), sessionExt.c_str());
 		fDlg.setDefExt(ext);
 		fDlg.setExtIndex(0);		// 0 index for "custom extension types"
 	}
-	fDlg.setExtFilter(TEXT("All types"), TEXT(".*"), NULL);
-	sessionFileName = fDlg.doSaveDlg();
+	fDlg.setExtFilter(TEXT("All types"), TEXT(".*"));
+	const bool isCheckboxActive = _pFileBrowser && !_pFileBrowser->isClosed();
+	const generic_string checkboxLabel = _nativeLangSpeaker.getLocalizedStrFromID("session-save-folder-as-workspace",
+		TEXT("Save Folder as Workspace"));
+	fDlg.setCheckbox(checkboxLabel.c_str(), isCheckboxActive);
+	generic_string sessionFileName = fDlg.doSaveDlg();
 
-	return fileSaveSession(nbFile, fileNames, sessionFileName);
+	return fileSaveSession(nbFile, fileNames, sessionFileName.c_str(), fDlg.getCheckboxState());
 }
 
 
@@ -2300,5 +2339,5 @@ void Notepad_plus::saveSession(const Session & session)
 
 void Notepad_plus::saveCurrentSession()
 {
-	::PostMessage(_pPublicInterface->getHSelf(), NPPM_INTERNAL_SAVECURRENTSESSION, 0, 0);
+	::SendMessage(_pPublicInterface->getHSelf(), NPPM_INTERNAL_SAVECURRENTSESSION, 0, 0);
 }

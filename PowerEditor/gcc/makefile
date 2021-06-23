@@ -1,25 +1,27 @@
-# this file is part of notepad++
+# This file is part of Notepad++ project
 # Copyright (C)2008 Harry Bruin <harrybharry@users.sourceforge.net>
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either
-# version 2 of the License, or (at your option) any later version.
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# at your option any later version.
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # Directories:
 NPP_DIR			= ../src
 SCI_DIR			= ../../scintilla/include
 GCC_DIR			= .
-GCCINCLUDE_DIR  = $(GCC_DIR)/include
+GCCINCLUDE_DIR	= $(GCC_DIR)/include
+
+#darkmode:
+DARKMODE_DIR	= $(NPP_DIR)/darkmode
 
 #json:
 JSON_DIR		= $(NPP_DIR)/json
@@ -35,7 +37,7 @@ MISC_DIR		= $(NPP_DIR)/MISC
  REGEXT_DIR		= $(MISC_DIR)/RegExt
 
 #ScintillaComponent:
-SCINT_DIR		= $(NPP_DIR)/ScitillaComponent
+SCINT_DIR		= $(NPP_DIR)/ScintillaComponent
 
 #TinyXml
 TIXML_DIR		= $(NPP_DIR)/TinyXml
@@ -73,14 +75,17 @@ WIN_DIR			= $(NPP_DIR)/WinControls
  TOOLBAR_DIR	= $(WIN_DIR)/ToolBar
  TOOLTIP_DIR	= $(WIN_DIR)/ToolTip
  TRAYICON_DIR	= $(WIN_DIR)/TrayIcon
- # NOT USED TREEVIEW_DIR	= $(WIN_DIR)/TreeView
+ TREEVIEW_DIR	= $(WIN_DIR)/TreeView
  VERTFILE_DIR	= $(WIN_DIR)/VerticalFileSwitcher
  WINDOWSDLG_DIR	= $(WIN_DIR)/WindowsDlg
 
 
 # Sources:
 SRC_NPP			= $(wildcard $(NPP_DIR)/*.cpp)
-SRC_GCCINCLUDE  = $(wildcard $(GCCINCLUDE_DIR)/*.cpp)
+SRC_GCCINCLUDE	= $(wildcard $(GCCINCLUDE_DIR)/*.cpp)
+
+#DARKMODE
+SRC_DARKMODE	= $(wildcard $(DARKMODE_DIR)/*.cpp)
 
 #MISC
 SRC_MISC		= $(wildcard $(MISC_DIR)/*.cpp)
@@ -131,12 +136,16 @@ SRC_WIN			= $(wildcard $(WIN_DIR)/*.cpp)
  SRC_TOOLBAR	= $(wildcard $(TOOLBAR_DIR)/*.cpp)
  SRC_TOOLTIP	= $(wildcard $(TOOLTIP_DIR)/*.cpp)
  SRC_TRAYICON	= $(wildcard $(TRAYICON_DIR)/*.cpp)
+ SRC_TREEVIEW	= $(wildcard $(TREEVIEW_DIR)/*.cpp)
  SRC_VERTFILE	= $(wildcard $(VERTFILE_DIR)/*.cpp)
  SRC_WINDOWSDLG	= $(wildcard $(WINDOWSDLG_DIR)/*.cpp)
 
 # Objects:
 OBJ_NPP			= $(patsubst %.cpp,%.o,$(SRC_NPP))
-OBJ_GCCINCLUDE  = $(patsubst %.cpp,%.o,$(SRC_GCCINCLUDE))
+OBJ_GCCINCLUDE	= $(patsubst %.cpp,%.o,$(SRC_GCCINCLUDE))
+
+#DARKMODE
+OBJ_DARKMODE	= $(patsubst %.cpp,%.o,$(SRC_DARKMODE))
 
 #MISC
 OBJ_MISC		= $(patsubst %.cpp,%.o,$(SRC_MISC))
@@ -187,37 +196,39 @@ OBJ_WIN			= $(patsubst %.cpp,%.o,$(SRC_WIN))
  OBJ_TOOLBAR	= $(patsubst %.cpp,%.o,$(SRC_TOOLBAR))
  OBJ_TOOLTIP	= $(patsubst %.cpp,%.o,$(SRC_TOOLTIP))
  OBJ_TRAYICON	= $(patsubst %.cpp,%.o,$(SRC_TRAYICON))
+ OBJ_TREEVIEW	= $(patsubst %.cpp,%.o,$(SRC_TREEVIEW))
  OBJ_VERTFILE	= $(patsubst %.cpp,%.o,$(SRC_VERTFILE))
  OBJ_WINDOWSDLG	= $(patsubst %.cpp,%.o,$(SRC_WINDOWSDLG))
 
 # Collections
-DIRS_WIN		= $(WIN_DIR) $(ABOUT_DIR) $(ANSICHAR_DIR) $(CLIPBOARD_DIR) $(CONTEXT_DIR) $(COLOUR_DIR) $(DOCKING_DIR) $(DOCMAP_DIR) $(FBROWSER_DIR) $(FINDCHARS_DIR) $(FUNCLIST_DIR) $(GRID_DIR) $(IMLIST_DIR) $(OPENSAVE_DIR) $(PLUGADMIN_DIR) $(PREFERENCE_DIR) $(PRJPANEL_DIR) $(READDIR_DIR) $(SHORTCUT_DIR) $(SPLITTER_DIR) $(STATICDLG_DIR) $(RUNDLG_DIR) $(STATUSBAR_DIR) $(TABBAR_DIR) $(TASKLIST_DIR) $(TOOLBAR_DIR) $(TOOLTIP_DIR) $(TRAYICON_DIR) $(VERTFILE_DIR) $(WINDOWSDLG_DIR)
+DIRS_WIN		= $(WIN_DIR) $(ABOUT_DIR) $(ANSICHAR_DIR) $(CLIPBOARD_DIR) $(CONTEXT_DIR) $(COLOUR_DIR) $(DOCKING_DIR) $(DOCMAP_DIR) $(FBROWSER_DIR) $(FINDCHARS_DIR) $(FUNCLIST_DIR) $(GRID_DIR) $(IMLIST_DIR) $(OPENSAVE_DIR) $(PLUGADMIN_DIR) $(PREFERENCE_DIR) $(PRJPANEL_DIR) $(READDIR_DIR) $(SHORTCUT_DIR) $(SPLITTER_DIR) $(STATICDLG_DIR) $(RUNDLG_DIR) $(STATUSBAR_DIR) $(TABBAR_DIR) $(TASKLIST_DIR) $(TOOLBAR_DIR) $(TOOLTIP_DIR) $(TRAYICON_DIR) $(TREEVIEW_DIR) $(VERTFILE_DIR) $(WINDOWSDLG_DIR)
 DIRS_UCHARDET	= $(UCHARDET_DIR)
 DIRS_TIXML		= $(TIXML_DIR) $(TIXMLA_DIR)
 DIRS_SCINT		= $(SCINT_DIR)
 DIRS_MISC		= $(MISC_DIR) $(COMMON_DIR) $(EXCEPTION_DIR) $(MD5_DIR) $(SHA2_DIR) $(PLUGINS_DIR) $(PROCESS_DIR) $(REGEXT_DIR)
 DIRS			= $(NPP_DIR) $(DIRS_WIN) $(DIRS_UCHARDET) $(DIRS_TIXML) $(DIRS_SCINT) $(DIRS_MISC) $(JSON_DIR) $(SCI_DIR)
 
-SRCS_WIN		= $(SRC_WIN) $(SRC_ABOUT) $(SRC_ANSICHAR) $(SRC_CLIPBOARD) $(SRC_CONTEXT) $(SRC_COLOUR) $(SRC_DOCKING) $(SRC_DOCMAP) $(SRC_FBROWSER) $(SRC_FINDCHARS) $(SRC_FUNCLIST) $(SRC_GRID) $(SRC_IMLIST) $(SRC_OPENSAVE) $(SRC_PLUGADMIN) $(SRC_PREFERENCE) $(SRC_PRJPANEL) $(SRC_READDIR) $(SRC_SHORTCUT) $(SRC_SPLITTER) $(SRC_STATICDLG) $(SRC_RUNDLG) $(SRC_STATUSBAR) $(SRC_TABBAR) $(SRC_TASKLIST) $(SRC_TOOLBAR) $(SRC_TOOLTIP) $(SRC_TRAYICON) $(SRC_VERTFILE) $(SRC_WINDOWSDLG)
+SRCS_WIN		= $(SRC_WIN) $(SRC_ABOUT) $(SRC_ANSICHAR) $(SRC_CLIPBOARD) $(SRC_CONTEXT) $(SRC_COLOUR) $(SRC_DOCKING) $(SRC_DOCMAP) $(SRC_FBROWSER) $(SRC_FINDCHARS) $(SRC_FUNCLIST) $(SRC_GRID) $(SRC_IMLIST) $(SRC_OPENSAVE) $(SRC_PLUGADMIN) $(SRC_PREFERENCE) $(SRC_PRJPANEL) $(SRC_READDIR) $(SRC_SHORTCUT) $(SRC_SPLITTER) $(SRC_STATICDLG) $(SRC_RUNDLG) $(SRC_STATUSBAR) $(SRC_TABBAR) $(SRC_TASKLIST) $(SRC_TOOLBAR) $(SRC_TOOLTIP) $(SRC_TRAYICON) $(SRC_TREEVIEW) $(SRC_VERTFILE) $(SRC_WINDOWSDLG)
 SRCS_UCHARDET	= $(SRC_UCHARDET)
 SRCS_TIXML		= $(SRC_TIXML) $(SRC_TIXMLA)
 SRCS_SCINT		= $(SRC_SCINT)
 SRCS_MISC		= $(SRC_MISC) $(SRC_COMMON) $(SRC_EXCEPTION) $(SRC_MD5) $(SRC_SHA2) $(SRC_PLUGINS) $(SRC_PROCESS) $(SRC_REGEXT)
 SRCS			= $(SRC_NPP) $(SRCS_WIN) $(SRCS_UCHARDET) $(SRCS_TIXML) $(SRCS_SCINT) $(SRCS_MISC) $(SRC_GCCINCLUDE)
 
-OBJS_WIN		= $(OBJ_WIN) $(OBJ_ABOUT) $(OBJ_ANSICHAR) $(OBJ_CLIPBOARD) $(OBJ_CONTEXT) $(OBJ_COLOUR) $(OBJ_DOCKING) $(OBJ_DOCMAP) $(OBJ_FBROWSER) $(OBJ_FINDCHARS) $(OBJ_FUNCLIST) $(OBJ_GRID) $(OBJ_IMLIST) $(OBJ_OPENSAVE) $(OBJ_PLUGADMIN) $(OBJ_PREFERENCE) $(OBJ_PRJPANEL) $(OBJ_READDIR) $(OBJ_SHORTCUT) $(OBJ_SPLITTER) $(OBJ_STATICDLG) $(OBJ_RUNDLG) $(OBJ_STATUSBAR) $(OBJ_TABBAR) $(OBJ_TASKLIST) $(OBJ_TOOLBAR) $(OBJ_TOOLTIP) $(OBJ_TRAYICON) $(OBJ_VERTFILE) $(OBJ_WINDOWSDLG)
+OBJS_WIN		= $(OBJ_WIN) $(OBJ_ABOUT) $(OBJ_ANSICHAR) $(OBJ_CLIPBOARD) $(OBJ_CONTEXT) $(OBJ_COLOUR) $(OBJ_DOCKING) $(OBJ_DOCMAP) $(OBJ_FBROWSER) $(OBJ_FINDCHARS) $(OBJ_FUNCLIST) $(OBJ_GRID) $(OBJ_IMLIST) $(OBJ_OPENSAVE) $(OBJ_PLUGADMIN) $(OBJ_PREFERENCE) $(OBJ_PRJPANEL) $(OBJ_READDIR) $(OBJ_SHORTCUT) $(OBJ_SPLITTER) $(OBJ_STATICDLG) $(OBJ_RUNDLG) $(OBJ_STATUSBAR) $(OBJ_TABBAR) $(OBJ_TASKLIST) $(OBJ_TOOLBAR) $(OBJ_TOOLTIP) $(OBJ_TRAYICON) $(OBJ_TREEVIEW) $(OBJ_VERTFILE) $(OBJ_WINDOWSDLG)
 OBJS_UCHARDET	= $(OBJ_UCHARDET)
 OBJS_TIXML		= $(OBJ_TIXML) $(OBJ_TIXMLA)
 OBJS_SCINT		= $(OBJ_SCINT)
+OBJS_DARKMODE	= $(OBJ_DARKMODE)
 OBJS_MISC		= $(OBJ_MISC) $(OBJ_COMMON) $(OBJ_EXCEPTION) $(OBJ_MD5) $(OBJ_SHA2) $(OBJ_PLUGINS) $(OBJ_PROCESS) $(OBJ_REGEXT)
-OBJS			= $(OBJ_NPP) $(OBJS_WIN) $(OBJS_UCHARDET) $(OBJS_TIXML) $(OBJS_SCINT) $(OBJS_MISC) $(OBJ_GCCINCLUDE)
+OBJS			= $(OBJ_NPP) $(OBJS_WIN) $(OBJS_UCHARDET) $(OBJS_TIXML) $(OBJS_SCINT) $(OBJS_MISC) $(OBJS_DARKMODE) $(OBJ_GCCINCLUDE)
 
 # Main resource file
 SRC_RES			= ./resources.rc
 OBJ_RES			= $(patsubst %.rc,%.res,$(SRC_RES))
 
 # XML config files
-SRC_XMLCFG		= $(addprefix $(NPP_DIR)/,langs.model.xml stylers.model.xml shortcuts.xml functionList.xml contextMenu.xml)
+SRC_XMLCFG		= $(addprefix $(NPP_DIR)/,langs.model.xml stylers.model.xml shortcuts.xml contextMenu.xml)
 DST_XMLCFG		= $(subst $(NPP_DIR),../bin,$(SRC_XMLCFG))
 
 DEPS = $(patsubst %.o,%.d,$(OBJS))
@@ -242,15 +253,15 @@ endif
 
 # Parameters
 INCLUDESPECIAL	= -include./include/various.h
-#    Comment this out for ANSI build
-UNICODE         = -DUNICODE -D_UNICODE
+UNICODE			= -DUNICODE -D_UNICODE
 
 CXX				= $(CROSS_COMPILE)g++
 #CXXFLAGS		= -O2 $(INCLUDESPECIAL)
-CXXFLAGS		= $(INCLUDESPECIAL) -DTIXML_USE_STL -DTIXMLA_USE_STL $(UNICODE) -std=c++17 -fpermissive
+CXXFLAGS		= $(INCLUDESPECIAL) -D_WIN32_WINNT=0x0600 -DTIXML_USE_STL -DTIXMLA_USE_STL $(UNICODE) -std=c++17 -fpermissive
 INCLUDES		= $(patsubst %,-I%,$(DIRS)) -I./include
 LDFLAGS			= -Wl,--subsystem,windows -municode -mwindows
-LIBS			= -lcomdlg32 -lcomctl32 -lgdi32 -lole32 -loleacc -lshell32 -lshlwapi -ldbghelp -lversion -lcrypt32 -lsensapi -lwintrust -lwinmm -luuid
+LIBS			= -lcomdlg32 -lcomctl32 -lgdi32 -lole32 -loleacc -lshell32 -lshlwapi -ldbghelp -lversion -lcrypt32 -lsensapi -lwininet -lwintrust -luuid -luxtheme
+LIBSCILEX		= -L$(SCI_DIR)/../bin  -lscilexer -loleaut32 -limm32 -lmsimg32
 
 RC				= $(CROSS_COMPILE)windres
 
@@ -266,8 +277,8 @@ all: NotepadPP xmlcfg
 NotepadPP: $(EXEC)
 
 $(EXEC): $(OBJS) $(OBJ_RES)
-	$(CXX) $(LDFLAGS) $^ $(LIBS) -o $@_dynamic
-	$(CXX) $(LDFLAGS) $^ $(LIBS) -static -o $@
+	$(CXX) $(LDFLAGS) $^ $(LIBSCILEX) $(LIBS) -o $@_dynamic
+	$(CXX) $(LDFLAGS) $^ $(LIBSCILEX) $(LIBS) -static -o $@
 	
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -MMD -c $< -o $@

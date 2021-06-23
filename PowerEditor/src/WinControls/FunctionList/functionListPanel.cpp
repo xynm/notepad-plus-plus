@@ -1,29 +1,18 @@
 // This file is part of Notepad++ project
-// Copyright (C)2020 Don HO <don.h@free.fr>
-//
-// This program is free software; you can redistribute it and/or
-// modify it under the terms of the GNU General Public License
-// as published by the Free Software Foundation; either
-// version 2 of the License, or (at your option) any later version.
-//
-// Note that the GPL places important restrictions on "derived works", yet
-// it does not provide a detailed definition of that term.  To avoid
-// misunderstandings, we consider an application to constitute a
-// "derivative work" for the purpose of this license if it does any of the
-// following:
-// 1. Integrates source code from Notepad++.
-// 2. Integrates/includes/aggregates Notepad++ into a proprietary executable
-//    installer, such as those produced by InstallShield.
-// 3. Links to a library or executes a program that does any of the above.
+// Copyright (C)2021 Don HO <don.h@free.fr>
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// at your option any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "json.hpp"
 #include "functionListPanel.h"
@@ -40,6 +29,9 @@ using namespace std;
 #define INDEX_ROOT        0
 #define INDEX_NODE        1
 #define INDEX_LEAF        2
+
+#define FL_SORTLOCALNODENAME   "SortTip"
+#define FL_RELOADLOCALNODENAME "ReloadTip"
 
 FunctionListPanel::~FunctionListPanel()
 {
@@ -108,13 +100,13 @@ size_t FunctionListPanel::getBodyClosePos(size_t begin, const TCHAR *bodyOpenSym
 
 	do
 	{
-		if (targetStart != -1 && targetStart != -2) // found open or close symbol
+		if (targetStart >= 0) // found open or close symbol
 		{
 			targetEnd = int((*_ppEditView)->execute(SCI_GETTARGETEND));
 
 			// Now we determinate the symbol (open or close)
 			int tmpStart = (*_ppEditView)->searchInTarget(bodyOpenSymbol, lstrlen(bodyOpenSymbol), targetStart, targetEnd);
-			if (tmpStart != -1 && tmpStart != -2) // open symbol found
+			if (tmpStart >= 0) // open symbol found
 			{
 				++cntOpen;
 			}
@@ -153,7 +145,7 @@ generic_string FunctionListPanel::parseSubLevel(size_t begin, size_t end, std::v
 	const TCHAR *regExpr2search = dataToSearch[0].c_str();
 	int targetStart = (*_ppEditView)->searchInTarget(regExpr2search, lstrlen(regExpr2search), begin, end);
 
-	if (targetStart == -1 || targetStart == -2)
+	if (targetStart < 0)
 	{
 		foundPos = -1;
 		return TEXT("");
@@ -473,35 +465,37 @@ void FunctionListPanel::init(HINSTANCE hInst, HWND hPere, ScintillaEditView **pp
 {
 	DockingDlgInterface::init(hInst, hPere);
 	_ppEditView = ppEditView;
+	
+	generic_string funcListXmlPath = (NppParameters::getInstance()).getUserPath();
+	PathAppend(funcListXmlPath, TEXT("functionList"));
+
+	generic_string funcListDefaultXmlPath = (NppParameters::getInstance()).getNppPath();
+	PathAppend(funcListDefaultXmlPath, TEXT("functionList"));
+
 	bool doLocalConf = (NppParameters::getInstance()).isLocal();
 
 	if (!doLocalConf)
 	{
-		generic_string funcListXmlPath = (NppParameters::getInstance()).getUserPath();
-		PathAppend(funcListXmlPath, TEXT("functionList.xml"));
-
 		if (!PathFileExists(funcListXmlPath.c_str()))
-		{
-			generic_string funcListDefaultXmlPath = (NppParameters::getInstance()).getNppPath();
-			PathAppend(funcListDefaultXmlPath, TEXT("functionList.xml"));
+		{	
 			if (PathFileExists(funcListDefaultXmlPath.c_str()))
 			{
 				::CopyFile(funcListDefaultXmlPath.c_str(), funcListXmlPath.c_str(), TRUE);
-				_funcParserMgr.init(funcListXmlPath, ppEditView);
+				_funcParserMgr.init(funcListXmlPath, funcListDefaultXmlPath, ppEditView);
 			}
 		}
 		else
 		{
-			_funcParserMgr.init(funcListXmlPath, ppEditView);
+			_funcParserMgr.init(funcListXmlPath, funcListDefaultXmlPath, ppEditView);
 		}
 	}
 	else
 	{
 		generic_string funcListDefaultXmlPath = (NppParameters::getInstance()).getNppPath();
-		PathAppend(funcListDefaultXmlPath, TEXT("functionList.xml"));
+		PathAppend(funcListDefaultXmlPath, TEXT("functionList"));
 		if (PathFileExists(funcListDefaultXmlPath.c_str()))
 		{
-			_funcParserMgr.init(funcListDefaultXmlPath, ppEditView);
+			_funcParserMgr.init(funcListDefaultXmlPath, funcListDefaultXmlPath, ppEditView);
 		}
 	}
 }
@@ -561,6 +555,10 @@ void FunctionListPanel::notified(LPNMHDR notification)
 			}
 			break;
 
+			case NM_RETURN:
+				SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, 1); // remove beep
+			break;
+
 			case TVN_KEYDOWN:
 			{
 				LPNMTVKEYDOWN ptvkd = (LPNMTVKEYDOWN)notification;
@@ -573,6 +571,16 @@ void FunctionListPanel::notified(LPNMHDR notification)
 						treeView.toggleExpandCollapse(hItem);
 						break;
 					}
+					PostMessage(_hParent, WM_COMMAND, SCEN_SETFOCUS << 16, reinterpret_cast<LPARAM>((*_ppEditView)->getHSelf()));
+				}
+				else if (ptvkd->wVKey == VK_TAB)
+				{
+					::SetFocus(_hSearchEdit);
+					SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, 1); // remove beep
+				}
+				else if (ptvkd->wVKey == VK_ESCAPE)
+				{
+					SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, 1); // remove beep
 					PostMessage(_hParent, WM_COMMAND, SCEN_SETFOCUS << 16, reinterpret_cast<LPARAM>((*_ppEditView)->getHSelf()));
 				}
 			}
@@ -692,6 +700,11 @@ static LRESULT CALLBACK funclstSearchEditProc(HWND hwnd, UINT message, WPARAM wP
 				::SendMessage(hwnd, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(TEXT("")));
 				return FALSE;
 			}
+			else if (wParam == VK_TAB)
+			{
+				::SendMessage(GetParent(hwnd), WM_COMMAND, VK_TAB, 1);
+				return FALSE;
+			}
 		}
 	}
 	return oldFunclstSearchEditProc(hwnd, message, wParam, lParam);
@@ -758,6 +771,9 @@ INT_PTR CALLBACK FunctionListPanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 			_hToolbarMenu = CreateWindowEx(0,TOOLBARCLASSNAME,NULL, style,
 								   0,0,0,0,_hSelf,nullptr, _hInst, NULL);
 
+			NppDarkMode::setDarkTooltips(_hToolbarMenu, NppDarkMode::ToolTipsType::toolbar);
+			NppDarkMode::setDarkLineAbovePanelToolbar(_hToolbarMenu);
+
 			oldFunclstToolbarProc = reinterpret_cast<WNDPROC>(::SetWindowLongPtr(_hToolbarMenu, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(funclstToolbarProc)));
 			TBBUTTON tbButtons[3];
 
@@ -816,8 +832,15 @@ INT_PTR CALLBACK FunctionListPanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 			setTreeViewImageList(IDI_FUNCLIST_ROOT, IDI_FUNCLIST_NODE, IDI_FUNCLIST_LEAF);
 
 			_treeView.display();
-            return TRUE;
-        }
+			return TRUE;
+		}
+
+		case NPPM_INTERNAL_REFRESHDARKMODE:
+		{
+			NppDarkMode::setDarkLineAbovePanelToolbar(_hToolbarMenu);
+			NppDarkMode::setExplorerTheme(_treeView.getHSelf(), true);
+			return TRUE;
+		}
 
 		case WM_DESTROY:
 			_treeView.destroy();
@@ -837,6 +860,14 @@ INT_PTR CALLBACK FunctionListPanel::run_dlgProc(UINT message, WPARAM wParam, LPA
 						return TRUE;
 					}
 				}
+			}
+			else if (wParam == VK_TAB)
+			{
+				if (_treeViewSearchResult.isVisible())
+					::SetFocus(_treeViewSearchResult.getHSelf());
+				else
+					::SetFocus(_treeView.getHSelf());
+				return TRUE;
 			}
 
 			switch (LOWORD(wParam))

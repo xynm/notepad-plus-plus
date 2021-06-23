@@ -289,7 +289,6 @@ https://github.com/AndresTraks/
                     <Item id="47002" name="Projekti leht"/>
                     <Item id="47003" name="Dokumentatsioon veebis"/>
 					<Item id="47004" name="Kogukond (foorum)"/>
-                    <Item id="47011" name="Tugi"/>
                     <Item id="47012" name="Silumisinfo..."/>
                     <Item id="47005" name="Leia veel pluginaid"/>
                     <Item id="47006" name="Värskenda Notepad++-i"/>
@@ -712,7 +711,6 @@ https://github.com/AndresTraks/
                     <Item id="6413" name="Vaikekaust (avamisel ja salvestamisel)"/>
                     <Item id="6414" name="Kasuta avatud dokumendi kausta"/>
                     <Item id="6415" name="Jäta meelde viimati kasutatud kaust"/>
-                    <Item id="6430" name="Kasuta uues stiilis salvestamise dialoogi (faililaiendi täiendusteta)"/>
                     <Item id="6431" name="Kausta pukseerimisel ava kõik kaustas asuvad failid tööruumina avamise asemel"/>
                 </DefaultDir>
 
